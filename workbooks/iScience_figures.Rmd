@@ -1,0 +1,1263 @@
+---
+title: "iScience"
+date: "`r Sys.Date()`"
+author: "Sean Wilson"
+output:
+  rmdformats::readthedown:
+  highlight: kate
+  toc: true
+#output:
+#  prettydoc::html_pretty:
+#    theme: cayman
+#    highlight: github
+#    toc: true
+#knit: (function(inputFile, encoding) { rmarkdown::render(inputFile, encoding = encoding, output_dir = here::here("docs/"))})
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(rmdformats)
+library(tidyverse)
+library(Seurat)
+library(patchwork)
+source(here::here("code/general_r_functions.R"))
+source(here::here("code/project_functions.R"))
+source(here::here("code/circle_plot.R"))
+source(here::here("code/datavis.R"))
+library(plotly)
+seed <- 250395
+## Global options
+options(max.print="1000")
+opts_chunk$set(echo=TRUE,
+	             cache=FALSE,
+               cache.lazy = FALSE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE,
+               fig.width = 9,
+               fig.height = 6,
+               dpi = 600)
+options(future.globals.maxSize = Inf)
+```
+## Note for anyone reading this notebook: Loading the objects from Zenodo should enable running the code chunks to replicate results from the paper. 
+## This wasn't written top to bottom, so some sections may not be in the order of objects made - sorry :[
+
+## load whole dataset
+
+```{r}
+all <- read_rds("data/Wilson_KidneyOrganoid_all.rds") 
+```
+
+
+```{r}
+library(RColorBrewer)
+gf.cols <- brewer.pal(n=9, name = "Paired")
+names(gf.cols) <- c("2F", "3F", "4F", "4F200", "4FG", "4FA", "4FC", "4FL", "4E")
+#allcelltypes.cols <- ggplotColors(53)[sample(1:53)]
+#write_rds(allcelltypes.cols, "data/allcelltypescolours.rds")
+allcelltypes.cols <- read_rds("data/allcelltypescolours.rds")
+```
+
+## Manuscript 1, Figure 2
+
+This figure describes the annotation of cellular identity in the first two stages.
+
+
+```{r}
+s1 <- read_rds("data/Wilson_KidneyOrganoid_Stage1.rds")
+s1$stage.cluster <- paste0("Stage1_c", s1$SCT_snn_res.0.1)
+
+t <- theme(axis.text = element_blank(),
+        legend.text = element_text(size=20),
+        axis.ticks = element_blank(),
+        text = element_text(family = "sans"))
+```
+
+### Figure 2A: UMAP representation of stage 1 samples collected at 3, 4 and 5 days of CHIR culture. Points are grouped by age.
+
+```{r, fig.width=5, fig.height=3.5}
+(plot <- (DimPlot(s1, group.by = "age", cols = cc) + 
+  t))
+
+# Now try saving the plot again
+ggsave(
+    plot = plot, 
+    filename = "png/iScience/Stage1_UMAP_Age.png", 
+    width = 5, 
+    height = 3.5, 
+    dpi = 300 # Keep the robust device
+)
+```
+
+
+### UMAP of stage 1 with annotation information
+
+```{r, fig.width=6, fig.height=3.5}
+(plot <- (DimPlot(s1, group.by = "CellTypes", label = T, label.size = 5) + t))
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage1_UMAP_CellTypes.png",
+  width = 6, # Width in inches
+  height = 3.5,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+```
+
+### DotPlot showing differentially expressed genes in each cluster.
+
+```{r}
+s1.degs.top <- c("EPCAM", "POU5F1", "SOX2", "T", "SP5", "MIXL1", "MSX2", "DLL1", "FGF8", "FGF17", "CDX1", "CDX2", "TBX6")
+```
+
+```{r, fig.height=3.5, fig.width=6}
+(plot <- StrDotPlot(s1, group.by = "CellTypes", features = s1.degs.top) +
+  theme(axis.title = element_blank(),
+        legend.position = "right"))
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage1_DotPlot.png",
+  width = 6, # Width in inches
+  height = 3.5,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+### Figure 2D: Monocle outcome
+
+```{r}
+library(monocle3)
+s1.trajectory <- read_rds("data/Monocle3_Stage1.rds")
+```
+
+
+```{r, fig.width=5, fig.height=3}
+(plot <- plot_cells(s1.trajectory$s1.trajectory, 
+           show_trajectory_graph = F,
+           color_cells_by = "pseudotime",
+           label_cell_groups=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           graph_label_size=1.5) + 
+  t)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage1_Pseudotime.png",
+  width = 6, # Width in inches
+  height = 3.5,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.width=14, fig.height=2}
+(plot <- plot_genes_in_pseudotime(s1.trajectory$diffgenes_cds,
+                         color_cells_by="CellTypes",
+                         min_expr=0.5, ncol = 6) + 
+  t)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage1_genesPseudotime.png",
+  width = 14, # Width in inches
+  height = 2,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+
+```{r, fig.width=4, fig.height=2}
+(plot <- ComponentBar(s1@meta.data, "CellTypes", "chir", show.pct = T) + coord_flip() +
+  theme_minimal() + 
+  theme(title = element_blank(),
+        axis.text = element_text(size=10)) +
+  scale_fill_manual(values = cc)
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage1_BarChart_CellTypes.png",
+  width = 4, # Width in inches
+  height = 2,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+  
+```
+
+
+
+
+### Figure 2G: UMAP of stage 2 split and grouped by age/chir
+
+```{r}
+s2 <- read_rds("data/Wilson_KidneyOrganoid_Stage2.rds")
+s2$stage.cluster <- paste0("Stage2_c", s2$SCT_snn_res.0.5)
+```
+
+```{r, fig.width=16, fig.height=5}
+(plot <- map2(c("7", "8", "9"), c(1, 2, 3), ~
+       DimPlot(s2, cells.highlight = list(rownames(s2@meta.data %>% filter(age==.x))),
+               cols.highlight = ifelse(.x!="unassigned", ggplotColors(3)[.y], "black"),
+               pt.size = 0.1) + 
+       ggtitle(.x) +
+       #NoAxes() & 
+       theme(text = element_blank(),
+        legend.position = "none",
+        axis.ticks = element_blank()))  %>%  
+  wrap_plots(ncol = 3))
+
+
+
+DimPlot(s2, group.by = "age", label = T, label.size = 7) + 
+  NoAxes() + 
+  theme(legend.text = element_text(size = 22),
+        title = element_text(size=0))
+```
+
+```{r, fig.width=16, fig.height=5}
+(plot <- map2(c("3c4F200", "4c4F200", "5c4F200"), c(1, 2, 3), ~
+       DimPlot(s2, cells.highlight = list(rownames(s2@meta.data %>% filter(condition==.x))),
+               cols.highlight = ifelse(.x!="unassigned", ggplotColors(3)[.y], "black"),
+               pt.size = 0.1) + 
+       ggtitle(.x) +
+       #NoAxes() & 
+       theme(text = element_blank(),
+        legend.position = "none",
+        axis.ticks = element_blank()))  %>%  
+  wrap_plots(ncol = 3))
+
+(plot <- map2(c("3c4F200", "4c4F200", "5c4F200"), c(1, 2, 3), ~
+       DimPlot(s2, cells.highlight = list(rownames(s2@meta.data %>% filter(condition==.x))),
+               cols.highlight = ifelse(.x!="unassigned", ggplotColors(3)[.y], "black"),
+               pt.size = 0.1) + 
+       ggtitle(.x) +
+       #NoAxes() & 
+       theme(text = element_blank(),
+        legend.position = "none",
+        axis.ticks = element_blank()))  %>%  
+  wrap_plots(ncol = 3))
+```
+
+
+```{r, fig.width=5, fig.height=5}
+(plot <- DimPlot(s2[, s2$gf=="4F200"], group.by = "chir", cols = cc) +
+   t + theme(legend.position = "bottom",
+             title = element_blank()))
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage2_UMAP_F200s.png",
+  width = 5, # Width in inches
+  height = 5,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+```{r}
+s2df <- all@meta.data %>% dplyr::filter(stage == "Stage2" & gf == "4F200")# %>% 
+  mutate(Lineage = case_when(CellTypes %in% c("pNPC", "NPC-1", "Early_Nephron", "UrEp", "Early_Stroma") ~ "Nephron & Stroma",
+                           CellTypes %in% c("IM-3", "AdvMeso-1", "AdvMeso-2", "AdvMeso-3", "Myotome") ~ "OffTarget Mesoderm",
+                           CellTypes %in% c("Neural_Crest", "Early_Neuron") ~ "OffTarget Neural")) %>% 
+  mutate(Lineage = fct_relevel(Lineage, "OffTarget Mesoderm", "OffTarget Neural", "Nephron"))
+
+
+```
+
+
+
+
+```{r, fig.width=9, fig.height=4}
+ggplot(ComponentHeatMapDF(s2df, "condition", "CellTypes", tidy = T) %>%
+           mutate(Identity = fct_relevel(Identity,
+                                         # X-AXIS: Order by specified factors
+                                         "3c4F200",
+                                         "4c4F200",
+                                         "5c4F200"),
+                  Text_Color_Switch = ifelse(Pct < 20, "White_Text", "Black_Text")
+                  )) +
+    # X-axis is 'Identity' (manual order)
+    # Y-axis is 'Component' ordered by 'Cells' (ascending)
+    geom_tile(aes(Identity, reorder(Component, -Cells), fill = Pct), colour = "white") +
+    geom_text(aes(Identity, reorder(Component, -Cells), label = round(Pct, 1), colour = Text_Color_Switch)) +
+    viridis::scale_fill_viridis() +
+    scale_colour_manual(values = c("White_Text" = "white", "Black_Text" = "black"),
+                        guide = "none") +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) -> a
+
+
+# Find the current order of Component factor levels
+component_levels <- levels(ComponentHeatMapDF(s3df, "CellTypes", "condition", tidy = T)$Component)
+
+# Reverse the order of the Component levels for the barchart (plot b)
+# This will visually flip the stacking order to match the heatmap's left-to-right axis order.
+ggplot(ComponentHeatMapDF(s2df, "CellTypes", "condition", tidy = T) %>%
+           mutate(Identity = fct_relevel(Identity,
+                                         "5c4F200",
+                                         "4c4F200",
+                                         "3c4F200"),
+                  # *** CORRECTION APPLIED HERE ***
+                  # Reverse the factor levels for 'Component' to fix the stacking order
+                  Component = fct_relevel(Component, rev(component_levels))
+                  )) +
+    geom_col(aes(Cells, reorder(Identity, -Cells), fill = Component), colour = "black") +
+    # ... rest of the plot b code
+    scale_fill_manual(values = rev(cc)) +
+    theme(axis.text.y = element_blank()) -> b
+
+#ggplot(ComponentHeatMapDF(s2df, "condition", "CellTypes", tidy = T)) +
+#  geom_col(aes(Cells, reorder(Component, -Cells), fill = Identity), colour = "black") + 
+#    viridis::scale_fill_viridis(discrete=TRUE) +
+#  #scale_y_log10() +
+#  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1),
+#        axis.text.y = element_blank()) -> c
+
+
+(plot <- ((a + b + plot_layout(design = "abbbb", guides = "collect") & theme(axis.title = element_blank()))))
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage2_ComboPlot_F200s.png",
+  width = 9, # Width in inches
+  height = 4,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+### Figure 2H: UMAP representation of stage 2 samples collected at 7, 8 and 9 days of directed differentiation. Points are grouped by clusters at resolution 0.3.
+
+```{r, fig.width=5.5, fig.height=4}
+DimPlot(s2, group.by = "SCT_snn_res.0.5", label=T, label.size=7) + 
+  theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=20),
+        axis.ticks = element_blank())
+```
+
+### Figure 2I: DotPlot showing the top 4 differentially expressed genes in each cluster.
+
+```{r}
+#s2.degs <- FindAllMarkers(SetIdent(s2, value = "stage.cluster"),
+#                          only.pos = T, 
+#                          assay = "RNA", 
+#                          slot = "data",
+#                          random.seed = 250395)
+#s2.degs.top <- s2.degs %>% dplyr::group_by(cluster) %>% top_n(8, pct.1-pct.2) %>% mutate(cluster = factor(cluster, level = paste0("Stage2_c", 0:9))) %>% #arrange(cluster)
+```
+
+
+```{r, fig.height=3.5, fig.width=8}
+s2$CellTypesOrder <- factor(s2$CellTypes, levels = c("pPSM", "IM-1", "IM-2", "PM",
+                                                     "Mesoderm-1", "Mesoderm-2", "Mesoderm-3", "Neural-Prog"))
+(plot <- StrDotPlot(s2, group.by = "CellTypesOrder", 
+           features = c("SP5", "FGF8", "DKK1", "TBX6", "PAX8", "CITED1", 
+                        "TCF15", "FOXD1", "MEOX2", "FOXC1", "FOXC2",
+                        "SOX2", "PAX3",
+                        "TPX2", "NUSAP1", 
+                        "TAGLN", "NR2F1", "MYL9", "ACTC1", "ACTA2", "CTGF" 
+                        )) +
+  theme(axis.title = element_blank()))
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage2_StrDotPlot_Genes.png",
+  width = 8, # Width in inches
+  height = 4,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+
+
+
+```{r, fig.width=6, fig.height=6}
+(plot <- DimPlot(s2, group.by = "CellTypes", label=T, label.size=6, repel=T) + 
+  theme(axis.text = element_blank(),
+        legend.text = element_text(size=15),
+        axis.ticks = element_blank(),
+        legend.position = "bottom"))
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage2_UMAP_CellTypes.png",
+  width = 6, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+
+```{r, fig.width=10, fig.height=4}
+(plot <- FeaturePlot(s2, features = c("PAX2", "PAX8", "GATA3", "SIX2", "PAX3", "MYL9",
+                             "TBX6", "SP5", "SOX2", "ANXA1", "TCF15", "MEOX2"),
+            cols=vcol, ncol=6, order = T) & NoAxes() & NoLegend()
+ )
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage2_FeaturePlots_Genes.png",
+  width = 10, # Width in inches
+  height = 4,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+## Figure 3A
+
+Split dimplot showing all cells at stage 3, highlighted by DevKidCC lineage identity
+
+
+```{r}
+s3 <- read_rds("data/Wilson_KidneyOrganoid_Stage3.rds")
+
+t <- theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=20),
+        axis.ticks = element_blank())
+```
+
+
+```{r, fig.width=24, fig.height=5}
+(plot <- map(c("NPC", "Nephron", "Stroma", "NPC-like", "unassigned"), 
+    ~DimPlot(s3, 
+             cells.highlight = list(rownames(s3@meta.data %>% filter(LineageID==.x))),
+             cols.highlight = ifelse(.x!="unassigned", DevKidCC::myColours()[.x], "black"), sizes.highlight = 0.1) + 
+      ggtitle(.x) +
+      NoAxes() + NoLegend() +
+  theme(axis.text = element_blank(),
+        title = element_text(size=20, hjust = 0.5),
+        #legend.text = element_text(size=20),
+        #legend.position = "bottom",
+        axis.ticks = element_blank()))  %>%  wrap_plots(ncol = 5)
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage3_UMAP_LineageID.png",
+  width = 24, # Width in inches
+  height = 5,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+## Figure 3B
+
+```{r, fig.width=6, fig.height=4}
+(plot <- DimPlot(s3, group.by = "SCT_snn_res.0.5", label=T, label.size=7) + 
+  theme(axis.text = element_blank(),
+        legend.text = element_text(size=17),
+        axis.ticks = element_blank())
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage3_UMAP_clusters.png",
+  width = 6, # Width in inches
+  height = 4,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+## Figure 3C
+
+Barchart showing the proportion of cells classified by DevKidCC in each cluster.
+
+```{r, fig.width=4, fig.height=4}
+(plot <- DevKidCC::ComponentPlot(s3, identity = "SCT_snn_res.0.5", component = "LineageID", show.pct = T, do.label = F) +
+  theme(axis.text = element_text(size=12),
+        title = element_blank(),
+        legend.position = "right")
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage3_BarChart_ClusterVSLineageID.png",
+  width = 4, # Width in inches
+  height = 4,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.height=9, fig.width=6}
+(plot <- FeaturePlot(s3, order = T, cols = vcol,
+            features = c("PAX8", "SIX2", 
+                         "CITED1", "PAX2", 
+                         "COL3A1", "PDGFRA",
+                         "PRRX1", "ZIC1", 
+                         "PAX3", "SOX2"), ncol = 2) &
+  NoLegend() & NoAxes() 
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage3_FeaturePlots_KeyGenes.png",
+  width = 6, # Width in inches
+  height = 9,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+### Figure 3D
+
+
+```{r, fig.height=4, fig.width=11}
+s3$CellTypesOrder <- factor(s3$CellTypes,
+                            levels = c("IM-3", "NPC-1", "pNPC", "Early_Nephron", "UrEp", "Early_Stroma",
+                                       "AdvMeso-1", "AdvMeso-2", "AdvMeso-3", "Early_Neuron", "Myotome",
+                                       "Neural_Crest"))
+(plot <- StrDotPlot(s3, group.by = "CellTypesOrder", dot.min = 0.05, dot.scale = 8,
+           features = c("UNCX", "PAX8", "LYPD1", "PAX2", "CITED1", "WT1",
+                        "EYA1", "GATA3", "CDH1", "EPCAM", "PRRX1", "TNC", "PCDH9", "ZIC1", "PAX3",
+                        "SCX", "IGFBP5", "STC1", "EPHA4",
+                        "TCF15", "TAGLN", "COL3A1", "PDGFRA", "SOX2", "MYL9", "MYL1"
+                       ))
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage3_DotPlot_KeyGenes.png",
+  width = 11, # Width in inches
+  height = 4,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.width=12, fig.height=3.5}
+map2(c(3,4,5), cc, ~DimPlot(s3, cells.highlight = list(rownames(s3@meta.data %>% filter(chir==paste0(.x, "c")))), 
+                            cols.highlight = .y, sizes.highlight = 0.2) + ggtitle(paste0(.x, "c")) +
+      theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=0),
+        axis.ticks = element_blank())& NoAxes() & NoLegend())  %>%  wrap_plots(ncol = 3)
+```
+
+
+```{r, fig.width=3, fig.height=5}
+DevKidCC::ComponentPlot(s3[, s3$LineageID == "Nephron"], identity = "chir", show.pct = T, component = "DKCC", do.label = F) +
+  theme(axis.text = element_text(size = 15))
+```
+
+
+
+
+
+
+```{r, fig.width=6, fig.height=6}
+
+#new.col <- c(DevKidCC::myColours()[c("NPC", "Nephron", "Stroma")], ggplotColors(9))
+#names(new.col) <- c("NPC", "Nephron", "Stroma", "Nephrogenic", "NMP_tNC", "Mesenchyme_1", "Neural", "NMP_NP", "Mesenchyme_2", "Myotome", "Mesenchyme_3", "Cycling")
+
+#DimPlot(s3, group.by = "ann", reduction = "umap", pt.size=0.2, cols = new.col) & NoAxes()
+(plot <-DimPlot(s3, group.by = "CellTypesOrder", reduction = "umap", pt.size=0.2, label = T) +
+  theme(legend.position = "bottom") & NoAxes() 
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage3_UMAP_CellTypes.png",
+  width = 6, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.width=6, fig.height=6}
+(plot <- DimPlot(s3[, s3$gf=="4F200"], group.by = "condition", cols = cc) +
+  theme(legend.position = "bottom",
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+             title = element_blank()))
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage3_UMAP_F200s.png",
+  width = 6, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r}
+s3df <- all@meta.data %>% dplyr::filter(stage == "Stage3" & gf == "4F200") %>% 
+  mutate(Lineage = case_when(CellTypes %in% c("pNPC", "NPC-1", "Early_Nephron", "UrEp", "Early_Stroma") ~ "Nephron & Stroma",
+                           CellTypes %in% c("IM-3", "AdvMeso-1", "AdvMeso-2", "AdvMeso-3", "Myotome") ~ "OffTarget Mesoderm",
+                           CellTypes %in% c("Neural_Crest", "Early_Neuron") ~ "OffTarget Neural")) %>% 
+  mutate(Lineage = fct_relevel(Lineage, "OffTarget Mesoderm", "OffTarget Neural", "Nephron"))
+
+
+```
+
+```{r, fig.width=9, fig.height=5}
+ggplot(ComponentHeatMapDF(s3df, "condition", "CellTypes", tidy = T) %>%
+           mutate(Identity = fct_relevel(Identity,
+                                         # X-AXIS: Order by specified factors
+                                         "3c4F200",
+                                         "4c4F200",
+                                         "5c4F200"),
+                  Text_Color_Switch = ifelse(Pct < 20, "White_Text", "Black_Text")
+                  )) +
+    # X-axis is 'Identity' (manual order)
+    # Y-axis is 'Component' ordered by 'Cells' (ascending)
+    geom_tile(aes(Identity, reorder(Component, -Cells), fill = Pct), colour = "white") +
+    geom_text(aes(Identity, reorder(Component, -Cells), label = round(Pct, 1), colour = Text_Color_Switch)) +
+    viridis::scale_fill_viridis() +
+    scale_colour_manual(values = c("White_Text" = "white", "Black_Text" = "black"),
+                        guide = "none") +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) -> a
+
+# Find the current order of Component factor levels
+component_levels <- levels(ComponentHeatMapDF(s3df, "CellTypes", "condition", tidy = T)$Component)
+
+# Reverse the order of the Component levels for the barchart (plot b)
+# This will visually flip the stacking order to match the heatmap's left-to-right axis order.
+ggplot(ComponentHeatMapDF(s3df, "CellTypes", "condition", tidy = T) %>%
+           mutate(Identity = fct_relevel(Identity,
+                                         "5c4F200",
+                                         "4c4F200",
+                                         "3c4F200"),
+                  # *** CORRECTION APPLIED HERE ***
+                  # Reverse the factor levels for 'Component' to fix the stacking order
+                  Component = fct_relevel(Component, rev(component_levels))
+                  )) +
+    geom_col(aes(Cells, reorder(Identity, -Cells), fill = Component), colour = "black") +
+    # ... rest of the plot b code
+    scale_fill_manual(values = rev(cc)) +
+    theme(axis.text.y = element_blank()) -> b
+
+(plot <- ((a + b + plot_layout(design = "abbbb", guides = "collect") & theme(axis.title = element_blank()))))
+
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage3_ComboPlot_F200s.png",
+  width = 9, # Width in inches
+  height = 5,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+
+```{r, fig.width=3, fig.height=5}
+ComponentBar(s3@meta.data, identity = "chir", show.pct = T, component = "CellTypesOrder", show.text = 101) + 
+  scale_fill_manual(values = ggplotColors(12)) +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 100 + 1), expand = c(0,0)) +
+  theme(axis.text = element_text(size = 15))
+```
+
+
+```{r, fig.width=9, fig.height=3}
+ComponentBar(s3@meta.data, identity = "chir", show.pct = T, component = "CellTypesOrder", show.text = 101) + 
+  scale_fill_manual(values = ggplotColors(12)) + coord_flip() +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 100 + 1), expand = c(0,0)) +
+  theme(axis.text = element_text(size = 15),
+        legend.position = "bottom")
+```
+
+
+## Stage 4
+
+## Load stage 4 data
+
+```{r}
+s4 <- read_rds("data/Wilson_KidneyOrganoid_Stage4.rds")
+
+t <- theme(axis.text = element_blank(),
+        legend.text = element_text(size=20),
+        axis.ticks = element_blank())
+```
+
+Umap plots
+
+```{r, fig.width=6, fig.height=6}
+(plot <-
+   DimPlot(s4[, s4$gf == "4F200"], group.by = "condition", cols = cc) + t + theme(legend.position = "bottom")
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage4_UMAP_F200s.png",
+  width = 6, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r}
+library(DevKidCC)
+```
+
+
+```{r, fig.width=21, fig.height=12}
+(plot <-
+map(c("NPC", "Nephron", "UrEp", "Stroma", "NPC-like", "unassigned"), ~DimPlot(s4, cells.highlight = list(rownames(s4@meta.data %>% filter(LineageID==.x))),
+                                                                              sizes.highlight = 0.1,
+                                                                              cols.highlight = ifelse(.x!="unassigned", myColours()[.x], "black")) + ggtitle(.x) +
+  NoAxes() + NoLegend() +
+      theme(axis.text = element_text(size=0),
+        #legend.text = element_text(size=0),
+        #legend.position = "none",
+        axis.ticks = element_blank())) %>% 
+  wrap_plots(ncol=3)
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage4_UMAP_LineageID.png",
+  width = 21, # Width in inches
+  height = 12,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+split umap plots for chir
+
+```{r, fig.width=7, fig.height=6}
+map2(c(3,4,5), cc, ~DimPlot(s4, cells.highlight = list(rownames(s4@meta.data %>% filter(chir==paste0(.x, "c")))), 
+                            cols.highlight = .y) + ggtitle(paste0(.x, "c")) +
+  theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=0),
+        legend.position = "none",
+        axis.ticks = element_blank()))
+```
+
+```{r, fig.width=16, fig.height=6}
+DimPlot(s4[, s4$gf=="4F200"], group.by = "LineageID", split.by = "condition", cols = DevKidCC::myColours()) & theme(text = element_text(size = 30))
+
+```
+
+
+
+```{r, fig.width=8, fig.height=6}
+(plot <-
+   DimPlot(s4, group.by = "SCT_snn_res.0.3", label = T, label.size = 10) + 
+  theme(axis.text = element_blank(),
+        legend.text = element_text(size=15),
+        legend.position = "right",
+        axis.ticks = element_blank()) 
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage4_UMAP_Clusters.png",
+  width = 8, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+```{r, fig.width=9, fig.height=6}
+(plot <- 
+   ComponentPlot(s4, identity = "SCT_snn_res.0.3", component = "LineageID", show.pct = T, do.label = F) + coord_flip() & theme(text = element_text(size = 30))
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage4_BarChart_ClustersLinID.png",
+  width = 9, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+```{r, fig.width=8, fig.height=8}
+(plot <- 
+   FeaturePlot(s4, order=T, features = c(c("EPCAM", "NPHS1", "PDGFRA",
+                                        "SOX2", "STMN2", "SOX10",
+                                        "PAX3", "PAX7", "MYOG",
+                                        "ATF3", "MSX1", "OGN")), ncol=3, cols = vcol) & NoAxes() & NoLegend()
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage4_FeaturePlots_KeyGenes.png",
+  width = 8, # Width in inches
+  height = 8,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+
+```{r}
+pop.types <- list(nephron = c("NPC-2", "EN", "PEC", "EPod", "Pod", "EPT", "PT", "EDT", "LOH", "DT", "UOS", "UTip", "UIS"),
+                  stroma = c("SPC", "MS", "CS", "MesS", "Endo"),
+                  offtarget = c("Glia-Ependymal", "Glia-Schwann", "Glia-1",  "Glia-2",  "Glia-3",
+                                "Myocyte","Satellite-cells",  "Neuron", "NPC-like"))
+s4$CellTypesOrder <- factor(s4$CellTypes, levels = c(pop.types$nephron, pop.types$stroma, pop.types$offtarget))
+```
+
+```{r, fig.width=9, fig.height=6}
+(plot <- 
+StrDotPlot(s4, group.by = "CellTypesOrder", dot.scale = 5,
+           features = c("EPCAM", "PAX8", "NPHS1", "HNF4A", "KCNJ1", 
+                        "PDGFRA", "COL3A1", "PRRX1", "COL9A1", "OGN", 
+                             "ZIC1", "ZIC2", "SOX2", "PAX3", 
+                        "MSX1", "MLANA", "PMEL", "SOX10", "S100B", "MITF", "ATF3",
+                             "MYOG", "TNNT2", "PITX2","MYOD1",  "PAX7", 
+                        "STMN2", "ELAVL4", "ELAVL3"
+                             
+                             ))
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage4_DotPlot_Markers.png",
+  width = 9, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+
+```{r, fig.width=9, fig.height=9}
+s4.cols <- read_rds("data/S4Colours.rds")
+
+(DimPlot(s4, group.by = "CellTypesOrder", cols = s4.cols, label = T, repel = T, label.size = 6) + NoAxes() +
+        
+  theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=20),
+        #axis.title = element_text(size=5),
+        legend.position = "bottom",
+        axis.ticks = element_blank())) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/iScience/Stage4_UMAP_CellTypes.png",
+  width = 9, # Width in inches
+  height = 9,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+```
+
+```{r, fig.width=9, fig.height=6}
+nephron.list <- map(pop.types$nephron, ~rownames(s4@meta.data %>% filter(CellTypesOrder %in% .x)))
+names(nephron.list) <- pop.types$nephron
+DimPlot(s4, cells.highlight = nephron.list, sizes.highlight = 0.2,
+        cols.highlight = rev(ggplotColors(13))) & NoAxes()& theme(text = element_text(size = 30)) +
+        
+  theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=0),
+        #axis.title = element_text(size=5),
+        legend.position = "none",
+        axis.ticks = element_blank())
+
+stroma.list <- map(pop.types$stroma, ~rownames(s4@meta.data %>% filter(CellTypesOrder %in% .x))) 
+names(stroma.list) <- pop.types$stroma
+DimPlot(s4, cells.highlight = stroma.list, sizes.highlight = 0.2,
+        cols.highlight = rev(ggplotColors(5))) & NoAxes()& theme(text = element_text(size = 30)) +
+  theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=0),
+        #axis.title = element_text(size=5),
+        legend.position = "none",
+        axis.ticks = element_blank())
+
+ot.list <- map(pop.types$offtarget, ~rownames(s4@meta.data %>% filter(CellTypesOrder %in% .x)))
+names(ot.list) <- pop.types$offtarget
+DimPlot(s4, cells.highlight = ot.list, sizes.highlight = 0.2,
+        cols.highlight = rev(ggplotColors(9))) & NoAxes()& theme(text = element_text(size = 25)) +
+  theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=0),
+        #axis.title = element_text(size=5),
+        legend.position = "none",
+        axis.ticks = element_blank())
+```
+
+```{r, fig.width=24, fig.height=5}
+(DimPlot(s4, cells.highlight = nephron.list, sizes.highlight = 0.1,
+        cols.highlight = rev(allcols[pop.types$nephron][order(pop.types$nephron)])) + NoAxes() +
+  theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=20),
+        #axis.title = element_text(size=5),
+        legend.position = "right",
+        axis.ticks = element_blank())) |
+(DimPlot(s4, cells.highlight = stroma.list, sizes.highlight = 0.1,
+        cols.highlight = rev(allcols[pop.types$stroma][order(pop.types$stroma)])) + NoAxes() +
+  theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=20),
+        #axis.title = element_text(size=5),
+        legend.position = "right",
+        axis.ticks = element_blank())) |
+(DimPlot(s4, cells.highlight = ot.list, sizes.highlight = 0.1,
+        cols.highlight = rev(ggplotColors(9))) + NoAxes() +
+  theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=20),
+        #axis.title = element_text(size=5),
+        legend.position = "right",
+        axis.ticks = element_blank()))
+```
+
+
+
+```{r, fig.height=4, fig.width=10}
+StrDotPlot(s4[, s4$CellTypes %in% pop.types$offtarget], group.by = "CellTypesOrder", 
+           features = c("PAX8", "EPCAM", "STMN2", "ELAVL4","MYOG","PITX2", "PAX7", "PAX3",  
+                        "SOX2","MSX1",  "SOX10", "MLANA", "MITF","S100B", "S100A10",
+                        "DNAJB4", "ATF3", 
+                        "AIF1","FOXJ1"
+                        ))
+
+StrDotPlot(s4[, s4$CellTypes %in% pop.types$offtarget], group.by = "CellTypesOrder", 
+           features = c(paste0("HOXA", 1:12),
+                        paste0("HOXB", 1:12),
+                        paste0("HOXC", 1:12),
+                        paste0("HOXD", 1:12)))
+
+StrDotPlot(s4[, s4$CellTypes %!in% pop.types$offtarget], group.by = "CellTypesOrder", 
+           features = c(paste0("HOXA", 1:12),
+                        paste0("HOXB", 1:12),
+                        paste0("HOXC", 1:12),
+                        paste0("HOXD", 1:12)))
+
+
+```
+
+
+azimuth on target predictions
+
+```{r}
+s4.sub.on <- read_rds(here::here("data/rds/S4_ontarget_subset.rds"))
+predictions <- read.delim(here::here('data/azimuth_pred_ontarget_toHDA.tsv'), row.names = 1)
+s4.sub.on <- AddMetaData(
+	object = s4.sub.on,
+	metadata = predictions)
+s4.sub.on$CellTypes <- s4[,colnames(s4.sub.on)]$CellTypes
+```
+
+
+```{r, fig.height=6, fig.width=14}
+(plot <- ggplot(s4.sub.on@meta.data %>% filter(CellTypes %in% c(pop.types$nephron, pop.types$stroma))) +
+  geom_jitter(aes(predicted.annotation.l2.score, predicted.annotation.l2), size = 0.1) |
+
+ComponentHeatMapDF(s4.sub.on@meta.data %>% filter(CellTypes %in% c(pop.types$nephron, pop.types$stroma)),
+                   "CellTypes", "predicted.annotation.l2") %>% 
+  ggplot() +
+  geom_tile(aes(Identity, Component, fill = Pct), colour = "white") +
+  #geom_label(aes(Identity, Component, label = Pct)) +
+  viridis::scale_fill_viridis() + theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1))
+)
+
+ggsave(
+    plot = plot,
+  filename = "png/iScience/Stage4_Azimuth_ontargets.png",
+  width = 6, # Width in inches
+  height = 14,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+```
+
+
+```{r}
+predictions <- read.delim(here::here('data/azimuth_pred_subset.tsv'), row.names = 1)
+s4.sub.off <- read_rds(here::here("data/rds/S4_offtarget_subset.rds"))
+s4.sub.off <- AddMetaData(
+	object = s4.sub.off,
+	metadata = predictions)
+s4.sub.off$CellTypes <- s4[,colnames(s4.sub.off)]$CellTypes
+```
+
+```{r, fig.height=5, fig.width=14}
+(plot <- 
+   ggplot(s4.sub.off@meta.data %>% filter(CellTypes %!in% c("CS", "DT", "EDT", "EN", "EPod", "EPT", "MesS", "MS", "NPC-2", "PEC", "Pod", "UIS", "UOS"))) +
+  geom_jitter(aes(predicted.annotation.l2.score, predicted.annotation.l2), size = 0.1) |
+
+ComponentHeatMapDF(s4.sub.off@meta.data %>% filter(CellTypes %!in% c("CS", "DT", "EDT", "EN", "EPod", "EPT", "MesS", "MS", "NPC-2", "PEC", "Pod", "UIS", "UOS")),
+                   "CellTypes", "predicted.annotation.l2") %>% 
+  
+  ggplot() +
+  geom_tile(aes(Identity, Component, fill = Pct), colour = "white") +
+  #geom_label(aes(Identity, Component, label = Pct)) +
+  viridis::scale_fill_viridis() + theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1))
+)
+
+ggsave(
+    plot = plot,
+  filename = "png/iScience/Stage4_Azimuth_offtargets.png",
+  width = 5, # Width in inches
+  height = 14,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+```
+
+
+```{r}
+s4df <- all@meta.data %>% dplyr::filter(stage == "Stage4" & gf == "4F200") 
+
+```
+
+```{r, fig.width=9, fig.height=5}
+ggplot(ComponentHeatMapDF(s4df, "condition", "CellTypes", tidy = T) %>%
+           mutate(Identity = fct_relevel(Identity,
+                                         # X-AXIS: Order by specified factors
+                                         "3c4F200",
+                                         "4c4F200",
+                                         "5c4F200"),
+                  Text_Color_Switch = ifelse(Pct < 20, "White_Text", "Black_Text")
+                  )) +
+    # X-axis is 'Identity' (manual order)
+    # Y-axis is 'Component' ordered by 'Cells' (ascending)
+    geom_tile(aes(Identity, reorder(Component, -Cells), fill = Pct), colour = "white") +
+    geom_text(aes(Identity, reorder(Component, -Cells), label = round(Pct, 1), colour = Text_Color_Switch)) +
+    viridis::scale_fill_viridis() +
+    scale_colour_manual(values = c("White_Text" = "white", "Black_Text" = "black"),
+                        guide = "none") +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) -> a
+
+# Find the current order of Component factor levels
+component_levels <- levels(ComponentHeatMapDF(s4df, "CellTypes", "condition", tidy = T)$Component)
+
+# Reverse the order of the Component levels for the barchart (plot b)
+# This will visually flip the stacking order to match the heatmap's left-to-right axis order.
+ggplot(ComponentHeatMapDF(s4df, "CellTypes", "condition", tidy = T) %>%
+           mutate(Identity = fct_relevel(Identity,
+                                         "5c4F200",
+                                         "4c4F200",
+                                         "3c4F200"),
+                  # *** CORRECTION APPLIED HERE ***
+                  # Reverse the factor levels for 'Component' to fix the stacking order
+                  Component = fct_relevel(Component, rev(component_levels))
+                  )) +
+    geom_col(aes(Cells, reorder(Identity, -Cells), fill = Component), colour = "black") +
+    # ... rest of the plot b code
+    scale_fill_manual(values = rev(cc)) +
+    theme(axis.text.y = element_blank()) -> b
+
+(plot <- ((a + b + plot_layout(design = "abbbb", guides = "collect") & theme(axis.title = element_blank()))))
+
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage4_ComboPlot_F200s.png",
+  width = 9, # Width in inches
+  height = 5,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+## Other diff comparisons
+
+
+```{r}
+org.subra <- read_rds(here::here("data/Subramanian_2019_Organoids.rds"))
+org.wu <- read_rds(here::here("data/Wu_2018_Organoids.rds"))
+org.uch <- read_rds(here::here("/data/Uchimura2020_Uchimura.rds"))
+org.uchtak <- read_rds(here::here("data/Uchimura2020_Takasato.rds"))
+org.jess <- read_rds(here::here("data/Vanslambrouck_ExtDiff_2020.rds"))
+anchors <- read_rds(here::here("data/Dataset_Integration_anchors.rds"))
+```
+
+
+
+## Stage 4
+
+Subset the mature populations then map to stage 4
+
+```{r}
+DefaultAssay(s4) <- "RNA"
+s4 <- s4 %>% NormalizeData() %>% FindVariableFeatures()
+```
+
+
+Subramanian
+
+```{r}
+org.subra.mat <- org.subra[, org.subra$age %in% c("29", "32")]
+org.subra.mat <- NormalizeData(org.subra.mat)
+#anchors$subramanian.s4 <- FindTransferAnchors(reference = s4, query = org.subra.mat, dims = 1:30,
+#    reference.reduction = "pca")
+subra.query <- MapQuery(anchorset = anchors$subramanian.s4, reference = s4, query = org.subra.mat,
+    refdata = list(celltype = "CellTypes"), reference.reduction = "pca", reduction.model = "umap")
+```
+
+
+Wu
+
+```{r}
+org.wu.mat <- org.wu[, org.wu$age %in% c(26,34)]
+org.wu.mat <- NormalizeData(org.wu.mat)
+#anchors$wu.s4 <- FindTransferAnchors(reference = s4, query = org.wu.mat, dims = 1:15,
+#    reference.reduction = "pca")
+wu.query <- MapQuery(anchorset = anchors$wu.s4, reference = s4, query = org.wu.mat,
+    refdata = list(celltype = "CellTypes"), reference.reduction = "pca", reduction.model = "umap")
+```
+
+
+Vanslambrouck mature organoids
+
+```{r}
+org.jess.mat <- org.jess[, org.jess$orig.ident %in% c("d13p14")]
+org.jess.mat <- NormalizeData(org.jess.mat)
+#anchors["jess.s4"] <- FindTransferAnchors(reference = s4, query = org.jess.mat, dims = 1:30,
+#    reference.reduction = "pca")
+jess.mat.query <- MapQuery(anchorset = anchors$jess.s4, reference = s4, query = org.jess.mat,
+    refdata = list(celltype = "CellTypes"), reference.reduction = "pca", reduction.model = "umap")
+```
+
+
+
+
+```{r}
+subra.query$predicted.celltype.order <- factor(subra.query$predicted.celltype.order, levels = levels(s4$CellTypesOrder))
+wu.query$predicted.celltype.order <- factor(wu.query$predicted.celltype.order, levels = levels(s4$CellTypesOrder))
+jess.mat.query$predicted.celltype.order <- factor(jess.mat.query$predicted.celltype.order, levels = levels(s4$CellTypesOrder))
+names(s4.cols) <- levels(s4$CellTypesOrder)
+```
+
+
+```{r, fig.width=24, fig.height=6}
+(plot <-
+DimPlot(subra.query, group.by = "predicted.celltype.order", reduction = "ref.umap", label = T, repel = T, cols = s4.cols) |
+  DimPlot(wu.query, group.by = "predicted.celltype.order", reduction = "ref.umap", label = T, repel = T, cols = s4.cols) |
+  DimPlot(jess.mat.query, group.by = "predicted.celltype.order", reduction = "ref.umap", label = T, repel = T, cols = s4.cols)
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Comparisons_UMAPs_predictedCT.png",
+  width = 24, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+
+
+
+
+
+```{r}
+subra.query$sample.id %>% unique()
+wu.query$sample.id %>% unique()
+jess.mat.query$sample.id <- "Van_PTE_D27"
+mature.queries <- subra.query@meta.data %>% bind_rows(wu.query[,grep("iPS", wu.query$sample.id, value = F)]@meta.data) %>% 
+  bind_rows(jess.mat.query@meta.data) %>% bind_rows(wu.query[,grep("TB", wu.query$sample.id, value = F)]@meta.data)
+
+mature.queries$sample.id.cond <- gsub("[A-Z]?\\d+\\_", "", mature.queries$sample.id)
+```
+
+
+
+
+
+```{r, fig.width=16, fig.height=6}
+(plot <- ggplot(mature.queries %>% filter(predicted.celltype.order %in% names(s4.cols)[1:19])) +
+  geom_jitter(aes(predicted.celltype.score, sample.id.cond), colour = "black", size = 0.1, alpha = 0.5) +
+  geom_violin(aes(predicted.celltype.score, sample.id.cond, fill = sample.id.cond), alpha = 0.8) +
+ scale_x_continuous(breaks = c(0.0, 0.5, 1.0), limits = c(0,1)) +
+  facet_grid(cols = vars(predicted.celltype.order)) +
+   theme(axis.text.y = element_text(size=13))
+)
+
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage4_TransferScores_All.png",
+  width = 16, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.width=16, fig.height=6}
+(plot <- ggplot(mature.queries %>% filter(predicted.celltype.order %in% names(s4.cols)[19:27])) +
+  geom_jitter(aes(predicted.celltype.score, sample.id.cond), colour = "black", size = 0.1, alpha = 0.5) +
+  geom_violin(aes(predicted.celltype.score, sample.id.cond, fill = sample.id.cond), alpha = 0.8) +
+  scale_x_continuous(breaks = c(0.0, 0.5, 1.0), limits = c(0,1)) +
+  facet_grid(cols = vars(predicted.celltype.order))+
+   theme(axis.text.y = element_text(size=13))
+)
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage4_TransferScores_Offtargets.png",
+  width = 16, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+Subramanian
+
+```{r}
+org.subra.s3 <- org.subra[, org.subra$age %in% c("15")]
+org.subra.s3 <- NormalizeData(org.subra.s3)
+#anchors$subramanian.s3 <- FindTransferAnchors(reference = s3, query = org.subra.s3, dims = 1:30,
+#    reference.reduction = "pca")
+subra.s3.query <- MapQuery(anchorset = anchors$subramanian.s3, reference = s3, query = org.subra.s3,
+    refdata = list(celltype = "CellTypes"), reference.reduction = "pca", reduction.model = "umap")
+```
+
+
+
+Wu
+
+```{r}
+org.wu.s3 <- org.wu[, org.wu$age %in% c(12)]
+org.wu.s3 <- NormalizeData(org.wu.s3)
+#anchors$wu.s3 <- FindTransferAnchors(reference = s3, query = org.wu.s3, dims = 1:30,
+#    reference.reduction = "pca")
+wu.s3.query <- MapQuery(anchorset = anchors$wu.s3, reference = s3, query = org.wu.s3,
+    refdata = list(celltype = "CellTypes"), reference.reduction = "pca", reduction.model = "umap")
+```
+
+
+```{r}
+org.jess.immat <- org.jess[, org.jess$orig.ident %in% c("d13")]
+org.jess.immat <- NormalizeData(org.jess.immat)
+#anchors$jess.s3 <- FindTransferAnchors(reference = s3, query = org.jess.immat, dims = 1:30,
+#    reference.reduction = "pca")
+jess.s3.query <- MapQuery(anchorset = anchors$jess.s3, reference = s3, query = org.jess.immat,
+    refdata = list(celltype = "CellTypes"), reference.reduction = "pca", reduction.model = "umap")
+```
+
+
+
+```{r}
+subra.s3.query$sample.id %>% unique()
+wu.s3.query$sample.id %>% unique()
+jess.s3.query$sample.id <- "Van_PTE_D13"
+immature.queries <- subra.s3.query@meta.data %>% bind_rows(wu.s3.query@meta.data) %>% 
+  bind_rows(jess.s3.query@meta.data)
+
+immature.queries$sample.id.cond <- gsub("[A-Z]?\\d+\\_", "", immature.queries$sample.id)
+```
+
+
+
+```{r}
+immature.queries$predicted.celltype %>% unique()
+```
+
+
+```{r, fig.width=16, fig.height=3}
+(plot <- ggplot(immature.queries) +
+  geom_jitter(aes(predicted.celltype.score, sample.id.cond), colour = "black", size = 0.1, alpha = 0.5) +
+  geom_violin(aes(predicted.celltype.score, sample.id.cond, fill = sample.id.cond), alpha = 0.8) +
+ scale_x_continuous(breaks = c(0.0, 0.5, 1.0), limits = c(0,1)) +
+  facet_grid(cols = vars(predicted.celltype))+
+   theme(axis.text.y = element_text(size=13))
+)
+ggsave(
+  plot = plot,
+  filename = "png/iScience/Stage3_TransferScores_Offtargets.png",
+  width = 16, # Width in inches
+  height = 3,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+```
