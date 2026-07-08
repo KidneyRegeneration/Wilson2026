@@ -1,4 +1,4 @@
-# Repository for both Wilson 2026 kidney organoid studies from Melissa Little group 
+# Repository for both Wilson et al 2026 kidney organoid studies 
 
 This repository contains the code used to process and analyse the data available through two publications:
 
@@ -10,9 +10,9 @@ Wilson et al., 2026; *Genome Biology*;
 
 ## Data availability
 
-The data made available through these studies is available at GEO: 
-GSE269904
+The data made available through these studies is available at GEO: <br>
+GSE269904 <br>
 GSE333258
 <br>
-Also available at Zenodo:
+Also available at Zenodo: <br>
 https://zenodo.org/records/18732338
