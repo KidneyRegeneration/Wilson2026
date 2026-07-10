@@ -1,0 +1,605 @@
+---
+title: "Bulkseq_pseudobulk_comparison"
+author: "Sean Wilson"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+  highlight: kate
+  toc: true
+#output:
+#  prettydoc::html_pretty:
+#    theme: cayman
+#    highlight: github
+#    toc: true
+knit: (function(inputFile, encoding) { rmarkdown::render(inputFile, encoding = encoding, output_dir = here::here("docs/"))})
+---
+
+## Introduction
+
+We generated a number of Bulk RNA-Seq samples to analyse the transcriptomes of cell populations and cultures from this study. <br>
+<br>
+In the first instance, we used a GATA3:mCherry reporter iPS cell line to generate organoids. These organoids were dissociated and stained with a conjugated EPCAM-Fluor488 antibody before being FACS sorted. We collected the various populations and Bulk RNA-Sequenced them. Ureteric Epithelium cultures generated from the GATA3+/EPCAM+ cells cultured in UE supporting conditions were also collected and sequenced.<br>
+<br>
+These samples are "batch 1".
+
+```{r setup, warning=FALSE, results='hide', echo=FALSE}
+library(edgeR)
+library(limma)
+library(RColorBrewer)
+library(NMF)
+library(Homo.sapiens)
+library(org.Hs.eg.db)
+library(Glimma)
+library(gplots)
+nmf.options(grid.patch=FALSE)
+projectDir <- "/maps/groupdir/dcq349/SUN-RENEW-Little/Data/sequencing/mcri_transfer_230913/230519_A00692_0358_BHMML5DSX5/"
+dataDir <- projectDir
+library(knitr)
+library(rmdformats)
+library(tidyverse)
+library(Seurat)
+library(patchwork)
+source(here::here("code/general_r_functions.R"))
+source(here::here("code/project_functions.R"))
+source(here::here("code/circle_plot.R"))
+source(here::here("code/datavis.R"))
+library(plotly)
+seed <- 250395
+## Global options
+options(max.print="1000")
+opts_chunk$set(echo=FALSE,
+	             cache=FALSE,
+               cache.lazy = FALSE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE,
+               fig.width = 9,
+               fig.height = 6,
+               dpi = 600,
+               echo=FALSE)
+opts_knit$set(width=500, root.dir = here::here())
+options(future.globals.maxSize = Inf)
+
+```
+
+## Preparing the data
+
+```{r}
+raw <- read.csv(file=paste0("/projects/dan1/people/dcq349/seq/run2/featureCounts/230519_A00692_0358_ML231275_KL099_MAN-20230517_ILLStrmRNA_L000.counts.txt"), sep="\t", row.names = 1, skip = 1)
+```
+
+
+```{r}
+raw <- map2_dfc(c("099", 100:102, 104:109, 111:116), c(231275:231278, 231280:231285, 231287:231292), ~read.csv(file=paste0("/projects/dan1/people/dcq349/seq/run2/featureCounts/230519_A00692_0358_ML", .y, "_KL", .x, "_MAN-20230517_ILLStrmRNA_L000.counts.txt"), sep="\t", row.names = 1, skip = 1)[,6])
+raw <- raw %>% rownames_to_column()
+genes <- rownames(read.csv(file=paste0("/projects/dan1/people/dcq349/seq/run2/featureCounts/230519_A00692_0358_ML231275_KL099_MAN-20230517_ILLStrmRNA_L000.counts.txt"), sep="\t", row.names = 1, skip = 1)) %>% substr(1,15)
+raw$rowname <- genes
+genes <- table(genes) %>% as.data.frame() %>% arrange(-Freq) %>% filter(Freq==1)
+raw <- raw %>% filter(rowname %in% genes$genes)
+raw <- column_to_rownames(raw)
+colnames(raw) <- paste0(c("099", 100:102, 104:109, 111:116))
+colnames(raw) <- c("3c4F", "4c4F", "5c4F", "3c4FA", "5c4FA", "3c4FC", "4c4FC", "5c4FC", "3c4F200", "4c4F200", "3c4FL", "4c4FL", "5c4FL", 
+                   "3c4E", "4c4E", "5c4E")
+targets <- data.frame(ID = colnames(raw),
+                      CHIR = c("3c", "4c", "5c", "3c", "5c", "3c", "4c", "5c", "3c", "4c", "3c", "4c", "5c", "3c", "4c", "5c"),
+                      GF = c("F", "F", "F", "FA", "FA", "FC", "FC", "FC", "F200", "F200", "FL", "FL", "FL", "E", "E", "E"))
+targets
+```
+
+
+Create a DGElist object and add gene annotation information to the data.
+
+```{r}
+dge <- DGEList(counts=raw, genes=rownames(raw), group=targets$ID)
+colnames(dge) <- paste(targets$ID)
+
+
+
+```
+
+Visualise library sizes
+
+```{r, fig.width=14, fig.height=6}
+pal = c("green", "blue", "red", "black")  
+
+par(mfrow=c(1,2))
+barplot(dge$samples$lib.size, names=targets$ID, las=2, cex.names=0.8,
+        ylab="Library size (cpm)", col = pal[factor(targets$ID)],
+        cex.axis=0.5)
+
+plotMDS(dge[, c(1:16)], col=pal[factor(targets$ID)[c(1:16)]], gene.selection = "common",
+        labels=targets$ID[c(1:16)], dim.plot = c(2,3))
+#legend("topright", legend=levels(factor(targets$ID)[c(1:16)]), text.col=pal)
+
+```
+Remove genes with less than 1 count per million in at least 3 samples. Then normalise using TMM.
+
+```{r}
+dge[, c(1:16)][is.na(dge$genes),,keep.lib.sizes=TRUE]
+isexpr <- rowSums(cpm(dge[,c(1:16)]) > 1) >= 3
+y <- dge[isexpr,,keep.lib.sizes=FALSE]
+y <- calcNormFactors(y)
+
+
+
+```
+
+```{r}
+# Get log2 counts per million
+logcounts <- cpm(y,log=TRUE)
+# Check distributions of samples using boxplots
+boxplot(logcounts, xlab="", ylab="Log2 counts per million",las=2)
+# Let's add a blue horizontal line that corresponds to the median logCPM
+abline(h=median(logcounts),col="blue")
+title("Boxplots of logCPMs")
+```
+
+```{r, fig.width=12, fig.height=9}
+# We estimate the variance for each row in the logcounts matrix
+var_genes <- apply(logcounts, 1, var)
+
+# Get the gene names for the top 500 most variable genes
+select_var <- names(sort(var_genes, decreasing=TRUE))[1:500]
+
+# Subset logcounts matrix
+highly_variable_lcpm <- logcounts[select_var,]
+dim(highly_variable_lcpm)
+
+
+## Get some nicer colours
+mypalette <- brewer.pal(11,"RdYlBu")
+morecols <- colorRampPalette(mypalette)
+# Set up colour vector for celltype variable
+
+
+# Plot the heatmap
+heatmap.2(highly_variable_lcpm,col=rev(morecols(50)),trace="none", main="Top 500 most variable genes across samples")
+```
+
+```{r}
+ann <- AnnotationDbi::select(org.Hs.eg.db, keys=rownames(dge), keytype = "ENSEMBL", 
+              columns=c("ENSEMBL","SYMBOL","GENENAME"))
+ann <- ann[!duplicated(ann$SYMBOL),]
+dge$genes <- ann[match(rownames(dge),ann$ENSEMBL),]$SYMBOL
+dge$genes$LENGTH <- raw$Length[rownames(raw) %in% rownames(dge)]
+```
+
+
+## Add Psuedobulk from scRNAseq.
+
+```{r}
+# load stage 2
+s2 <- read_rds("data/rds/KidOrgTimecourse.rds")
+s2 <- s2[, s2$stage == "Stage2"]
+```
+
+```{r}
+s2.sudo <- pseudobulk(s2, "condition")
+colnames(s2.sudo) <- paste0(colnames(s2.sudo), "_FS19")
+```
+
+shared genes between datasets
+
+```{r}
+s2.sudo.genes <- rownames(s2.sudo)
+ann$SYMBOL %in% s2.sudo.genes %>% table()
+```
+
+```{r}
+s2.sudo <- s2.sudo[rownames(s2.sudo) %in% dge$genes,]
+new <- dge$counts[!is.na(dge$genes),] %>% as.data.frame()
+rownames(new) <- dge$genes[!is.na(dge$genes)]
+new <- new[rownames(new) %in% rownames(s2.sudo),]
+
+counts <- bind_cols(new, s2.sudo[rownames(new),] )
+```
+
+```{r}
+dge <- DGEList(counts=counts, genes=rownames(counts))
+```
+
+Visualise library sizes
+
+```{r, fig.width=14, fig.height=6}
+pal = c("green", "blue", "red", "black")  
+
+par(mfrow=c(1,2))
+barplot(dge$samples$lib.size, names=colnames(dge), las=2, cex.names=0.8,
+        ylab="Library size (cpm)", 
+        cex.axis=0.5)
+
+plotMDS(dge, gene.selection = "common",
+        labels=colnames(dge), dim.plot = c(2,3))
+#legend("topright", legend=levels(factor(targets$ID)[c(1:16)]), text.col=pal)
+
+```
+
+Remove genes with less than 1 count per million in at least 3 samples. Then normalise using TMM.
+
+```{r}
+isexpr <- rowSums(cpm(dge) > 1) >= 3
+y <- dge[isexpr,,keep.lib.sizes=FALSE]
+y <- calcNormFactors(y)
+
+
+
+```
+
+```{r}
+# Get log2 counts per million
+logcounts <- cpm(y,log=TRUE)
+# Check distributions of samples using boxplots
+boxplot(logcounts, xlab="", ylab="Log2 counts per million",las=2)
+# Let's add a blue horizontal line that corresponds to the median logCPM
+abline(h=median(logcounts),col="blue")
+title("Boxplots of logCPMs")
+```
+
+```{r, fig.width=12, fig.height=9}
+# We estimate the variance for each row in the logcounts matrix
+var_genes <- apply(logcounts, 1, var)
+
+# Get the gene names for the top 500 most variable genes
+select_var <- names(sort(var_genes, decreasing=TRUE))[1:500]
+
+# Subset logcounts matrix
+highly_variable_lcpm <- logcounts[select_var,]
+dim(highly_variable_lcpm)
+
+
+## Get some nicer colours
+mypalette <- brewer.pal(11,"RdYlBu")
+morecols <- colorRampPalette(mypalette)
+# Set up colour vector for celltype variable
+
+
+# Plot the heatmap
+heatmap.2(highly_variable_lcpm,col=rev(morecols(50)),trace="none", main="Top 500 most variable genes across samples")
+```
+
+
+## Batch correction
+
+As we know the batches as samples, we can use that information to correct for batch.
+
+```{r}
+library(sva)
+
+corrected_data = ComBat_seq(counts = as.matrix(dge$counts), batch = c(rep("Repeat", 16),
+                                                                      rep("FS19", 20)))
+```
+
+```{r, fig.width=9, fig.height=9}
+pearson <- cor(corrected_data[])
+NMF::aheatmap(pearson, border_color = "black", treeheight = c(0, 50))
+```
+
+```{r}
+dge.cd <- DGEList(counts=corrected_data, genes=rownames(corrected_data))
+```
+
+Visualise library sizes
+
+```{r, fig.width=14, fig.height=6}
+pal = c("green", "blue", "red", "black")  
+
+par(mfrow=c(1,2))
+barplot(dge.cd$samples$lib.size, names=colnames(dge.cd), las=2, cex.names=0.8,
+        ylab="Library size (cpm)", 
+        cex.axis=0.5)
+
+plotMDS(dge.cd, gene.selection = "common",
+        labels=colnames(dge.cd), dim.plot = c(2,3))
+#legend("topright", legend=levels(factor(targets$ID)[c(1:16)]), text.col=pal)
+
+```
+```{r}
+isexpr <- rowSums(cpm(dge.cd) > 1) >= 3
+y <- dge[isexpr,,keep.lib.sizes=FALSE]
+y <- calcNormFactors(y)
+```
+
+```{r}
+# Get log2 counts per million
+logcounts <- cpm(y,log=TRUE)
+# Check distributions of samples using boxplots
+boxplot(logcounts, xlab="", ylab="Log2 counts per million",las=2)
+# Let's add a blue horizontal line that corresponds to the median logCPM
+abline(h=median(logcounts),col="blue")
+title("Boxplots of logCPMs")
+```
+
+```{r, fig.width=12, fig.height=9}
+# We estimate the variance for each row in the logcounts matrix
+var_genes <- apply(corrected_data, 1, var)
+
+# Get the gene names for the top 500 most variable genes
+select_var <- names(sort(var_genes, decreasing=TRUE))[1:500]
+
+# Subset logcounts matrix
+highly_variable_lcpm <- logcounts[select_var,]
+dim(highly_variable_lcpm)
+
+
+## Get some nicer colours
+mypalette <- brewer.pal(11,"RdYlBu")
+morecols <- colorRampPalette(mypalette)
+# Set up colour vector for celltype variable
+
+
+# Plot the heatmap
+heatmap.2(highly_variable_lcpm,col=rev(morecols(50)),trace="none", main="Top 500 most variable genes across samples")
+```
+
+
+## DEGs
+
+Get degs from s2 and 1) plot these and 2) plot thes on Pearsons
+
+```{r}
+s2.degs <- FindAllMarkers(SetIdent(s2, value = "condition"), only.pos = T, test.use = "t")
+#s2.degs.t10 <- s2.degs %>% dplyr::group_by(cluster) %>% top_n(pct.1-pct.2, 5)
+genes <- unique(s2.degs$gene)
+```
+
+```{r}
+# Plot the heatmap
+heatmap.2(corrected_data[genes[genes %in% rownames(corrected_data)],],
+          col=rev(morecols(50)),trace="none", main="Top 500 most variable genes across samples")
+```
+
+
+```{r, fig.width=9, fig.height=9}
+pearson <- cor(corrected_data[genes[genes %in% rownames(corrected_data)],])
+NMF::aheatmap(pearson, border_color = "black", treeheight = c(0, 50))
+```
+
+
+Only genes DEG in F, F200, FC
+
+```{r}
+filter.genes <- s2.degs %>% filter(cluster %in% c("3c4F", "4c4F", "5c4F", "3c4F200", "4c4F200", "5c4F200", "3c4FC", "4c4FC", "5c4FC", "5c2F"))
+
+```
+
+
+
+```{r, fig.width=9, fig.height=9}
+pearson <- cor(corrected_data[filter.genes$gene[filter.genes$gene %in% rownames(corrected_data)],])
+NMF::aheatmap(pearson, border_color = "black", treeheight = c(0, 50))
+```
+
+## Refined analysis
+
+The above was all exploratory analysis, getting an idea of the data and how to play with it. It showed that the biggest variation between the data was batch (of course). It also showed that when minimising batch effect, there are similarities between the same conditions in each dataset (good!).
+
+I now want to do this analysis and present it as best as possible.
+
+I want to improve the colouring of graphs for these as well.
+
+```{r}
+dge <- DGEList(counts=counts, genes=rownames(counts))
+dge$samples
+colnames(dge) <- c(paste0(colnames(raw), "_Exp2"), paste0(colnames(s2.sudo), "_Exp1"))
+colnames(dge) <- gsub("_FS19", "", colnames(dge))
+
+targets <- data.frame(ID = colnames(dge),
+                      CHIR = c("3c", "4c", "5c", "3c", "5c", "3c", "4c", "5c", "3c", "4c", "3c", "4c", "5c", "3c", "4c", "5c",
+                               "3c", "3c", "4c", "3c", "3c", "3c", "3c", "5c", "4c", "4c", "4c", "4c", "4c", "4c", 
+                               "5c", "5c", "5c", "5c", "5c", "5c"),
+                      GF = c("F", "F", "F", "FA", "FA", "FC", "FC", "FC", "F200", "F200", "FL", "FL", "FL", "E", "E", "E",
+                             "FA", "E", "F", "F200", "FL", "F", "FC", "F", "E", "F200", "FL", "FA", "FC", "F", "E", "FC", "FA", "FL", "F200", "F"),
+                      EXP = c(rep("Exp2", 16), rep("Exp1", 20)))
+targets
+```
+
+```{r}
+pal.chir = cc  
+pal.gf = c("black", "blueviolet", "skyblue", "grey", "forestgreen", "pink")
+pal.exp = c("magenta", "orange")
+
+```
+
+
+### MDS plots 
+
+For each seperately
+
+Experiment 1: the original data, psuedobulked scRNAseq
+
+```{r, fig.width=18, fig.height=9}
+
+
+par(mfrow=c(1,2),
+    bg="grey")
+
+
+plotMDS(dge[,17:36], gene.selection = "common", col = pal.chir[factor(targets[17:36,]$CHIR)],
+        labels=colnames(dge[,17:36]), dim.plot = c(1,2))
+plotMDS(dge[,17:36], gene.selection = "common", col = pal.chir[factor(targets[17:36,]$CHIR)],
+        labels=colnames(dge[,17:36]), dim.plot = c(3,2))
+#legend("topright", legend=levels(factor(targets$ID)[c(1:16)]), text.col=pal)
+
+par(mfrow=c(1,2),
+    bg = "white")
+
+
+plotMDS(dge[,17:36], gene.selection = "common", col = pal.gf[factor(targets[17:36,]$GF)],
+        labels=colnames(dge[,17:36]), dim.plot = c(1,2))
+plotMDS(dge[,17:36], gene.selection = "common", col = pal.gf[factor(targets[17:36,]$GF)],
+        labels=colnames(dge[,17:36]), dim.plot = c(3,2))
+```
+
+the new bulk data from pei's repeat
+
+```{r, fig.width=18, fig.height=9}
+
+
+par(mfrow=c(1,2),
+    bg="grey")
+
+
+plotMDS(dge[,1:16], gene.selection = "common", col = pal.chir[factor(targets[1:16,]$CHIR)],
+        labels=colnames(dge[,1:16]), dim.plot = c(1,2))
+plotMDS(dge[,1:16], gene.selection = "common", col = pal.chir[factor(targets[1:16,]$CHIR)],
+        labels=colnames(dge[,1:16]), dim.plot = c(3,2))
+#legend("topright", legend=levels(factor(targets$ID)[c(1:16)]), text.col=pal)
+
+par(mfrow=c(1,2),
+    bg = "white")
+
+
+plotMDS(dge[,1:16], gene.selection = "common", col = pal.chir[factor(targets[1:16,]$GF)],
+        labels=colnames(dge[,1:16]), dim.plot = c(1,2))
+plotMDS(dge[,1:16], gene.selection = "common", col = pal.chir[factor(targets[1:16,]$GF)],
+        labels=colnames(dge[,1:16]), dim.plot = c(3,2))
+```
+
+For them combined
+
+
+
+```{r, fig.width=18, fig.height=9}
+
+par(mfrow=c(1,2),
+    bg="grey")
+
+
+plotMDS(dge, gene.selection = "common", col = pal.chir[factor(targets$CHIR)],
+        labels=colnames(dge), dim.plot = c(1,2))
+plotMDS(dge, gene.selection = "common", col = pal.chir[factor(targets$CHIR)],
+        labels=colnames(dge), dim.plot = c(3,2))
+#legend("topright", legend=levels(factor(targets$ID)[c(1:16)]), text.col=pal)
+
+par(mfrow=c(1,2),
+    bg = "white")
+
+
+plotMDS(dge, gene.selection = "common", col = pal.gf[factor(targets$GF)],
+        labels=colnames(dge), dim.plot = c(1,2))
+plotMDS(dge, gene.selection = "common", col = pal.gf[factor(targets$GF)],
+        labels=colnames(dge), dim.plot = c(3,2))
+```
+
+
+
+### Transcriptome Pearson comparison
+
+For each seperately
+
+```{r, fig.width=9, fig.height=9}
+pearson <- cor(dge$counts[,17:36])
+NMF::aheatmap(pearson, border_color = "black", treeheight = c(0, 150))
+```
+
+```{r, fig.width=9, fig.height=9}
+pearson <- cor(dge$counts[,1:16])
+NMF::aheatmap(pearson, border_color = "black", treeheight = c(0, 150))
+```
+
+Combined
+
+```{r, fig.width=9, fig.height=9}
+pearson <- cor(dge$counts[])
+NMF::aheatmap(pearson, border_color = "black", treeheight = c(0, 150))
+```
+
+Batch (different experiments and different formats) gives almost 50% difference!
+
+## Batch correction
+
+As we know the batches as samples, we can use that information to correct for batch.
+
+```{r}
+library(sva)
+
+corrected_data = ComBat_seq(counts = as.matrix(dge$counts), batch = targets$EXP)
+```
+
+```{r, fig.width=12, fig.height=12}
+pearson <- cor(corrected_data[])
+ann.col <- list(GF = pal.gf,
+                CHIR =pal.chir,
+                EXP = pal.exp)
+ann.list <- list(GF = (factor(targets$GF)),
+                           CHIR = (factor(targets$CHIR)),
+                           EXP = (factor(targets$EXP)))
+NMF::aheatmap(pearson, border_color = "black", treeheight = c(0, 150),
+              annCol = ann.list[1:2],
+              annRow = ann.list[3])
+
+```
+
+Shared most variable genes only.
+
+
+```{r}
+# Get log2 counts per million
+logcounts <- cpm(dge,log=TRUE)
+
+# We estimate the variance for each row in the logcounts matrix
+var_genes_exp1 <- apply(logcounts[,17:36], 1, var)
+var_genes_exp2 <- apply(logcounts[,1:16], 1, var)
+
+# Get the gene names for the top 500 most variable genes
+select_var_1 <- names(sort(var_genes_exp1, decreasing=TRUE))[1:2000]
+select_var_2 <- names(sort(var_genes_exp2, decreasing=TRUE))[1:2000]
+
+table(select_var_1 %in% select_var_2)
+
+vargenes <- intersect(select_var_1, select_var_2)
+```
+
+
+
+```{r, fig.width=12, fig.height=12}
+pearson <- cor(corrected_data[vargenes,])
+png("data/figures/Seq_Comparison_Heatmap.png", width=300, height = 300, units="mm", res = 600)
+NMF::aheatmap(pearson, border_color = "black", treeheight = c(0, 150),
+              annCol = ann.list[1:2],
+              annRow = ann.list[3],
+              annColors = ann.col)
+dev.off()
+```
+
+```{r}
+pearson
+df <- map(paste0(targets$CHIR, "4", targets$GF)[1:16], ~pearson[paste0(.x, "_Exp1"), paste0(.x, "_Exp2")])
+names(df) <- paste0(targets$CHIR, "4", targets$GF)[1:16]
+```
+
+
+```{r}
+df %>% as.data.frame 
+```
+
+```{r, fig.height=12, fig.width=12}
+genes.test <- c("HOXD10", "HOXD11", "PAX2", "TBX6", "SP5", "SOX2", "FOXD1", "TCF15", "ITGA8", "PDGFRA", "PDGFRB", "MSGN1")
+NMF::aheatmap(corrected_data[genes.test,], border_color = "black", treeheight = c(0, 150), 
+              annCol = ann.list,
+              annColors = ann.col)
+```
+
+
+
+```{r}
+genes4c4FC <- corrected_data[,c("4c4FC_Exp1", "4c4FC_Exp2")] %>% as.data.frame()
+genes4c4FC %>% head()
+qplot(log(genes4c4FC$`4c4FC_Exp1`), log(genes4c4FC$`4c4FC_Exp2`))
+qplot(log(corrected_data[,"3c4FL_Exp1"]), log(corrected_data[,"3c4FL_Exp2"]))
+qplot(log(corrected_data[,"3c4FL_Exp1"]), log(corrected_data[,"4c4F200_Exp2"]))
+
+
+ggplot(as.data.frame(corrected_data[vargenes,]), aes(log(`3c4FL_Exp1`), log(`4c4F200_Exp2`))) +
+  geom_point() 
+
+ggplot(as.data.frame(corrected_data[vargenes,]), aes(log(`3c4FL_Exp1`), log(`3c4FL_Exp2`))) +
+  geom_point() 
+```
+
+
+
+
+

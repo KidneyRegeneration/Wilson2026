@@ -1,0 +1,1824 @@
+---
+title: "Submission 2 figures"
+date: "`r Sys.Date()`"
+author: "Sean Wilson"
+output:
+  rmdformats::readthedown:
+  highlight: kate
+  toc: true
+#output:
+#  prettydoc::html_pretty:
+#    theme: cayman
+#    highlight: github
+#    toc: true
+#knit: (function(inputFile, encoding) { rmarkdown::render(inputFile, encoding = encoding, output_dir = here::here("docs/"))})
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+#library(rmdformats)
+library(tidyverse)
+library(Seurat)
+library(patchwork)
+source(here::here("code/general_r_functions.R"))
+source(here::here("code/project_functions.R"))
+source(here::here("code/circle_plot.R"))
+source(here::here("code/datavis.R"))
+library(plotly)
+seed <- 250395
+## Global options
+options(max.print="1000")
+opts_chunk$set(echo=TRUE,
+	             cache=FALSE,
+               cache.lazy = FALSE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE,
+               fig.width = 9,
+               fig.height = 6,
+               dpi = 600)
+opts_knit$set(width=500, root.dir = here::here("analysis/Submission2"))
+options(future.globals.maxSize = Inf)
+```
+
+
+## load whole dataset
+
+```{r}
+all <- read_rds("data/Wilson_KidneyOrganoid_all.rds") 
+```
+
+
+```{r}
+library(RColorBrewer)
+gf.cols <- brewer.pal(n=9, name = "Paired")
+names(gf.cols) <- c("2F", "3F", "4F", "4F200", "4FG", "4FA", "4FC", "4FL", "4E")
+#allcelltypes.cols <- ggplotColors(53)[sample(1:53)]
+#write_rds(allcelltypes.cols, "data/allcelltypescolours.rds")
+allcelltypes.cols <- read_rds("data/allcelltypescolours.rds")
+```
+
+```{r}
+pop.types <- list(nephron = c("NPC-2", "EN", "PEC", "EPod", "Pod", "EPT", "PT", "EDT", "LOH", "DT", "UOS", "UTip", "UIS"),
+                  stroma = c("SPC", "MS", "CS", "MesS", "Endo"),
+                  offtarget = c("Glia-Ependymal", "Glia-Schwann", "Glia-1",  "Glia-2",  "Glia-3",
+                                "Myocyte","Satellite-cells",  "Neuron", "NPC-like"))
+s4df <- all@meta.data %>% dplyr::filter(stage == "Stage4") %>% 
+  mutate(Lineage = case_when(CellTypes %in% pop.types$nephron ~ "Nephron",
+                           CellTypes %in% pop.types$stroma ~ "Stroma",
+                           CellTypes %in% pop.types$offtarget ~ "OffTarget")) %>% 
+  mutate(Lineage = fct_relevel(Lineage, "Nephron", "Stroma", "OffTarget"))
+
+```
+
+map cell types to general themes
+
+```{r}
+alldf <- all@meta.data %>% 
+  mutate(Lineage = case_when(
+    CellTypes %in% c("pNPC", "NPC-1", "Early_Nephron", "UrEp", pop.types$nephron) ~ "Nephron",
+    CellTypes %in% c("Early_Stroma", pop.types$stroma) ~ "Stroma",
+    CellTypes %in% c("IM-3", "IM-1", "IM-2", "early_pPS", "late_pPS_1", "late_pPS_2", "pPSM") ~ "On-Target Mesoderm",
+    CellTypes %in% c("AdvMeso-1", "AdvMeso-2", "AdvMeso-3","PM", "Mesoderm-1", "Mesoderm-2", "Mesoderm-3", "NMP") ~ "Off-Target Mesoderm",
+    CellTypes %in% c("iPSC", "iPSC-like") ~ "iPSC",
+    CellTypes %in% c("Neural_Crest", "Early_Neuron", "Neural-Prog", "Glia-Ependymal" , "Glia-Schwann"  ,"Glia-1" , "Glia-2" , "Glia-3", "Neuron") ~ "Off-Target Neural",
+    CellTypes %in% c( "Myotome", "Myocyte", "Satellite-cells") ~ "Off-Target Muscle",
+  ))
+
+all$Lineage <- alldf$Lineage
+lineage.cols <- brewer.pal(8, "Set1")
+names(lineage.cols) <- unique(alldf$Lineage)
+```
+
+## Figure 1
+
+TSNE representations of the whole dataset
+
+```{r, fig.width=12, fig.height=12}
+(DimPlot(all, group.by = "CellTypes", reduction = "tsne.pca50", cols = allcelltypes.cols,
+        label = T, repel = T, label.size = 5, label.box = T, raster = F) & NoLegend() + NoAxes()) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/All_tsne_big.png",
+  width = 12, # Width in inches
+  height = 12,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+(DimPlot(all, group.by = "CellTypes", reduction = "tsne.pca50", cols = allcelltypes.cols,
+        label = T, repel = T, label.size = 5) & NoLegend() + NoAxes()) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/All_tsne_raster.png",
+  width = 12, # Width in inches
+  height = 12,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+  
+(DimPlot(all, group.by = "CellTypes", reduction = "tsne.pca50", cols = allcelltypes.cols,
+        label = T, repel = T, label.size = 5) + theme(legend.position = "bottom")) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/All_tsne_legend.png",
+  width = 12, # Width in inches
+  height = 12,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+```{r, fig.width=8, fig.height=6}
+(DimPlot(all, group.by = "stage", reduction = "tsne.pca50") & NoAxes()) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/All_tsne_stage.png",
+  width = 8, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+```
+
+```{r, fig.width=12, fig.height=3}
+(DimPlot(all, group.by = "Lineage", split.by = "stage", reduction = "umap", pt.size = 1.5, cols = lineage.cols) + theme_linedraw()  & NoAxes()) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/All_UMAP_stage-split.png",
+  width = 12, # Width in inches
+  height = 3,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+```
+
+Update the condition namings
+
+```{r}
+alist <- list()
+conds <- c(paste0("3c", c("4F", "4FG", "4F200", "4FA", "4FC", "4FL", "4E")),
+           paste0("4c", c("4F", "4FG", "4F200", "4FA", "4FC", "4FL", "4E")),
+           paste0("5c", c("4F", "4FG", "4F200", "4FA", "4FC", "4FL", "4E")))
+for (i in conds){
+  alist[[i]] <- c()
+}
+alist[[1]] <- c("iPSC", "Stage1_3c", "Stage2_3c4F", "Stage3_3c4F", "Stage4_3c4F")
+alist[[2]] <- c("iPSC", "Stage1_3c", "Stage2_3c4F", "Stage3_3c4FG", "Stage4_3c4FG")
+alist[[3]] <- c("iPSC", "Stage1_3c", "Stage2_3c4F200", "Stage3_3c4F200", "Stage4_3c4F200")
+alist[[4]] <- c("iPSC", "Stage1_3c", "Stage2_3c4FA", "Stage3_3c4FA", "Stage4_3c4FA")
+alist[[5]] <- c("iPSC", "Stage1_3c", "Stage2_3c4FC", "Stage3_3c4FC", "Stage4_3c4FC")
+alist[[6]] <- c("iPSC", "Stage1_3c", "Stage2_3c4FL", "Stage3_3c4FL", "Stage4_3c4FL")
+alist[[7]] <- c("iPSC", "Stage1_3c", "Stage2_3c4E", "Stage3_3c4E", "Stage4_3c4E")
+alist[[8]] <-  c("iPSC", "Stage1_4c", "Stage2_4c4F", "Stage3_4c4F", "Stage4_4c4F")
+alist[[9]] <-  c("iPSC", "Stage1_4c", "Stage2_4c4F", "Stage3_4c4FG", "Stage4_4c4FG")
+alist[[10]] <- c("iPSC", "Stage1_4c", "Stage2_4c4F200", "Stage3_4c4F200", "Stage4_4c4F200")
+alist[[11]] <- c("iPSC", "Stage1_4c", "Stage2_4c4FA", "Stage3_4c4FA", "Stage4_4c4FA")
+alist[[12]] <- c("iPSC", "Stage1_4c", "Stage2_4c4FC", "Stage3_4c4FC", "Stage4_4c4FC")
+alist[[13]] <- c("iPSC", "Stage1_4c", "Stage2_4c4FL", "Stage3_4c4FL")
+alist[[14]] <- c("iPSC", "Stage1_4c", "Stage2_4c4E", "Stage3_4c4E", "Stage4_4c4E")
+alist[[15]] <- c("iPSC", "Stage1_5c", "Stage2_5c4F", "Stage3_5c4F", "Stage4_5c4F")
+alist[[16]] <- c("iPSC", "Stage1_5c", "Stage2_5c4F", "Stage3_5c4FG", "Stage4_5c4FG")
+alist[[17]] <- c("iPSC", "Stage1_5c", "Stage2_5c4F200", "Stage3_5c4F200", "Stage4_5c4F200")
+alist[[18]] <- c("iPSC", "Stage1_5c", "Stage2_5c4FA", "Stage3_5c4FA", "Stage4_5c4FA")
+alist[[19]] <- c("iPSC", "Stage1_5c", "Stage2_5c4FC", "Stage3_5c4FC", "Stage4_5c4FC")
+alist[[20]] <- c("iPSC", "Stage1_5c", "Stage2_5c4FL", "Stage3_5c4FL", "Stage4_5c4FL")
+alist[[21]] <- c("iPSC", "Stage1_5c", "Stage2_5c4E", "Stage3_5c4E", "Stage4_5c4E")
+
+
+```
+
+
+```{r}
+all$stage_condition <- paste0(all$stage, "_", all$condition)
+all$stage_condition <- gsub("iPSC_NA", "iPSC", all$stage_condition)
+```
+
+## Figure 2
+
+```{r}
+s4 <- read_rds("data/Wilson_KidneyOrganoid_Stage4.rds")
+s4$CellTypesOrder <- factor(s4$CellTypes, levels = c(pop.types$nephron, pop.types$stroma, pop.types$offtarget))
+
+```
+
+
+```{r}
+order.bygf <- c("3c4F200", "4c4F200", "5c4F200", "3c4F","4c4F","5c4F","3c4FG","4c4FG","5c4FG","3c4FA", "4c4FA", "5c4FA", "3c4FC","4c4FC","5c4FC",
+                "3c4FL","4c4FL","5c4FL","3c4E","4c4E","5c4E")
+order.bychir <- c("3c4F200", "3c4F", "3c4FG", "3c4FA", "3c4FC", "3c4FL", "3c4E",
+            "4c4F200", "4c4F", "4c4FG", "4c4FA", "4c4FC", "4c4FL", "4c4E", 
+            "5c4F200", "5c4F", "5c4FG", "5c4FA", "5c4FC", "5c4FL", "5c4E")
+```
+
+
+
+
+```{r, fig.width=14, fig.height=9}
+ggplot(ComponentHeatMapDF(s4df, "condition", "CellTypes", tidy = T) %>% 
+           mutate(Identity = fct_relevel(Identity, order.bygf)) %>%    
+       mutate(text_color_choice = ifelse(Pct > 30, "black", "white"))) +
+  geom_tile(aes(Identity, reorder(Component, -Cells), fill = Pct), colour = "white") +
+  geom_text(aes(Identity, reorder(Component, -Cells), label = ifelse(Pct>9.9, yes = round(Pct, 0), no = round(Pct, 1)), colour = text_color_choice)) +
+  #geom_label(aes(Identity, Component, label = Pct)) +
+  viridis::scale_fill_viridis() + 
+  scale_colour_manual(values = c("black", "white")) +
+  #scale_colour_gradient2(low = "white", mid = "white", high = "black", midpoint = 30) +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1)) -> a
+
+# need to order colours across all conditions and stages
+ggplot(ComponentHeatMapDF(s4df, "condition", "Lineage", tidy = T) %>% 
+         mutate(Identity = fct_relevel(Identity, order.bygf),
+            Component = fct_relevel(Component, "OffTarget", "Stroma", "Nephron"))) +
+  geom_col(aes(Identity, Cells, fill = Component), colour = "black") + 
+  #scale_fill_brewer(palette = "Paired") +
+  scale_fill_manual(values = c("grey", "brown", "blue")) +
+  theme(axis.text.x = element_blank()) -> b
+
+ggplot(ComponentHeatMapDF(s4df, "chir", "CellTypes", tidy = T)) +
+  geom_col(aes(Cells, reorder(Component, -Cells), fill = Identity), colour = "black") + 
+    viridis::scale_fill_viridis(discrete=TRUE) +
+  #scale_y_log10() +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1),
+        axis.text.y = element_blank()) -> c
+
+
+print((a + b + c + plot_layout(design = "
+                        bb#
+                        aac
+                        aac", guides = "collect") & theme(axis.title = element_blank())) -> plot)
+
+
+ggsave(
+  plot = plot,
+  filename = "png/Stage4_HeatBarCombo_Condition.png",
+  width = 14, # Width in inches
+  height = 9,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+
+```
+
+```{r}
+#s4.cols <- brewer.pal(n = 9, "Set1") %>% c(brewer.pal(n=10, "Paired"), brewer.pal(n=8, "Dark2"))
+#s4.cols <- s4.cols[sample(1:27)]
+#write_rds(s4.cols, "data/S4Colours.rds")
+s4.cols <- read_rds("data/S4Colours.rds")
+```
+
+
+```{r, fig.width=9, fig.height=9}
+(DimPlot(s4, group.by = "CellTypesOrder", cols = s4.cols, label = T, label.box = T, repel = T) + NoAxes() +
+        
+  theme(axis.text = element_text(size=0),
+        legend.text = element_text(size=20),
+        #axis.title = element_text(size=5),
+        legend.position = "bottom",
+        axis.ticks = element_blank())) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/Stage4_UMAP_CellTypes.png",
+  width = 9, # Width in inches
+  height = 9,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+```
+
+## Figure 3
+
+splitting the heatbar plots out by gf and by condition for all stages
+
+stage 4
+
+```{r, fig.width=7, fig.height=7}
+ggplot(ComponentHeatMapDF(s4df, "gf", "CellTypes", tidy = T) %>% 
+           mutate(Identity = fct_relevel(Identity, 
+            "4F200", "4F", "4FG", "4FA", "4FC", "4FL", "4E", "3F", "2F",)) %>% 
+         mutate(text_color_choice = ifelse(Pct > 10, "black", "white"))) +
+  geom_tile(aes(Identity, reorder(Component, -Cells), fill = Pct), colour = "white") +
+  geom_text(aes(Identity, reorder(Component, -Cells), label = ifelse(Pct>9.9, yes = round(Pct, 0), no = round(Pct, 1)), colour = text_color_choice)) +
+  #geom_label(aes(Identity, Component, label = Pct)) +
+  viridis::scale_fill_viridis() + 
+  scale_colour_manual(values = c("black", "white")) +
+  #scale_colour_gradient2(low = "white", mid = "white", high = "black", midpoint = 30) +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1)) -> a
+
+# need to order colours across all conditions and stages
+ggplot(ComponentHeatMapDF(s4df, "gf", "Lineage", tidy = T) %>% 
+         mutate(Identity = fct_relevel(Identity, 
+            "4F200", "4F", "4FG", "4FA", "4FC", "4FL", "4E", "3F", "2F"),
+            Component = fct_relevel(Component, "OffTarget", "Stroma", "Nephron"))) +
+  geom_col(aes(Identity, Cells, fill = Component), colour = "black") + 
+  #scale_fill_brewer(palette = "Paired") +
+  scale_fill_manual(values = c("grey", "brown", "blue")) +
+  theme(axis.text.x = element_blank()) -> b
+
+ggplot(ComponentHeatMapDF(s4df, "chir", "CellTypes", tidy = T)) +
+  geom_col(aes(Cells, reorder(Component, -Cells), fill = Identity), colour = "black") + 
+    viridis::scale_fill_viridis(discrete=TRUE) +
+  #scale_y_log10() +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1),
+        axis.text.y = element_blank()) -> c
+
+
+print((a + b + c + plot_layout(design = "
+                        bb#
+                        aac
+                        aac
+                        aac", guides = "collect") & theme(axis.title = element_blank())) -> plot)
+
+ggsave(
+  plot = plot,
+  filename = "png/Stage4_HeatBarCombo_GF.png",
+  width = 7, # Width in inches
+  height = 7,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r}
+s2df <- all@meta.data %>% dplyr::filter(stage == "Stage2") %>% 
+  mutate(Lineage = case_when(CellTypes %in% c("IM-1", "IM-2") ~ "PSM and IM",
+                           CellTypes %in% c("PM", "Mesoderm-1", "Mesoderm-2", "Mesoderm-3") ~ "OffTarget Mesoderm",
+                           CellTypes %in% c("Neural-Prog") ~ "OffTarget Neural")) %>% 
+  mutate(Lineage = fct_relevel(Lineage, "OffTarget Mesoderm", "OffTarget Neural", "PSM and IM"))
+
+
+```
+
+
+```{r, fig.width=14, fig.height=6}
+ggplot(ComponentHeatMapDF(s2df, "condition", "CellTypes", tidy = T) %>% 
+           mutate(Identity = fct_relevel(Identity, 
+            "3c4F200", "3c4F", "3c4FG", "3c4FA", "3c4FC", "3c4FL", "3c4E",
+            "4c4F200", "4c4F", "4c4FG", "4c4FA", "4c4FC", "4c4FL", "4c4E", "4c3F",
+            "5c4F200", "5c4F", "5c4FG", "5c4FA", "5c4FC", "5c4FL", "5c4E", "5c2F",)) %>% 
+         mutate(text_color_choice = ifelse(Pct > 30, "black", "white"))) +
+  geom_tile(aes(Identity, reorder(Component, -Cells), fill = Pct), colour = "white") +
+  geom_text(aes(Identity, reorder(Component, -Cells), label = ifelse(Pct>9.9, yes = round(Pct, 0), no = round(Pct, 1)), colour = text_color_choice)) +
+  #geom_label(aes(Identity, Component, label = Pct)) +
+  viridis::scale_fill_viridis() + 
+  scale_colour_manual(values = c("black", "white")) +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1)) -> a
+
+# need to order colours across all conditions and stages
+ggplot(ComponentHeatMapDF(s2df, "condition", "Lineage", tidy = T) %>% 
+         mutate(Identity = fct_relevel(Identity, 
+            "3c4F200", "3c4F", "3c4FG", "3c4FA", "3c4FC", "3c4FL", "3c4E",
+            "4c4F200", "4c4F", "4c4FG", "4c4FA", "4c4FC", "4c4FL", "4c4E", "4c3F",
+            "5c4F200", "5c4F", "5c4FG", "5c4FA", "5c4FC", "5c4FL", "5c4E", "5c2F"),
+            Component = fct_relevel(Component, "OffTarget Mesoderm", "OffTarget Neural", "PSM and IM"))) +
+  geom_col(aes(Identity, Cells, fill = Component), colour = "black") + 
+  #scale_fill_brewer(palette = "Paired") +
+  scale_fill_manual(values = c("grey", "brown", "blue")) +
+  theme(axis.text.x = element_blank()) -> b
+
+ggplot(ComponentHeatMapDF(s2df, "chir", "CellTypes", tidy = T)) +
+  geom_col(aes(Cells, reorder(Component, -Cells), fill = Identity), colour = "black") + 
+    viridis::scale_fill_viridis(discrete=TRUE) +
+  #scale_y_log10() +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1),
+        axis.text.y = element_blank()) -> c
+
+
+print((a + b + c + plot_layout(design = "
+                        bb#
+                        aac", guides = "collect") & theme(axis.title = element_blank())) -> plot)
+
+ggsave(
+  plot = plot,
+  filename = "png/Stage2_HeatBarCombo_Condition.png",
+  width = 14, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.width=7, fig.height=4}
+ggplot(ComponentHeatMapDF(s2df, "gf", "CellTypes", tidy = T) %>% 
+           mutate(Identity = fct_relevel(Identity, 
+            "4F200", "4F", "4FG", "4FA", "4FC", "4FL", "4E", "3F", "2F",)) %>% 
+         mutate(text_color_choice = ifelse(Pct > 30, "black", "white"))) +
+  geom_tile(aes(Identity, reorder(Component, -Cells), fill = Pct), colour = "white") +
+  geom_text(aes(Identity, reorder(Component, -Cells), label = ifelse(Pct>9.9, yes = round(Pct, 0), no = round(Pct, 1)), colour = text_color_choice)) +
+  #geom_label(aes(Identity, Component, label = Pct)) +
+  viridis::scale_fill_viridis() + 
+  scale_colour_manual(values = c("black", "white")) +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1)) -> a
+
+# need to order colours across all conditions and stages
+ggplot(ComponentHeatMapDF(s2df, "gf", "Lineage", tidy = T) %>% 
+         mutate(Identity = fct_relevel(Identity, 
+            "4F200", "4F", "4FG", "4FA", "4FC", "4FL", "4E", "3F", "2F"),
+            Component = fct_relevel(Component, "OffTarget Mesoderm", "OffTarget Neural", "PSM and IM"))) +
+  geom_col(aes(Identity, Cells, fill = Component), colour = "black") + 
+  #scale_fill_brewer(palette = "Paired") +
+  scale_fill_manual(values = c("grey", "brown", "blue")) +
+  theme(axis.text.x = element_blank()) -> b
+
+ggplot(ComponentHeatMapDF(s2df, "chir", "CellTypes", tidy = T)) +
+  geom_col(aes(Cells, reorder(Component, -Cells), fill = Identity), colour = "black") + 
+    viridis::scale_fill_viridis(discrete=TRUE) +
+  #scale_y_log10() +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1),
+        axis.text.y = element_blank()) -> c
+
+
+print((a + b + c + plot_layout(design = "
+                        bb#
+                        aac
+                        aac", guides = "collect") & theme(axis.title = element_blank())) -> plot)
+
+ggsave(
+  plot = plot,
+  filename = "png/Stage2_HeatBarCombo_GF.png",
+  width = 7, # Width in inches
+  height = 4,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r}
+s3df <- all@meta.data %>% dplyr::filter(stage == "Stage3") %>% 
+  mutate(Lineage = case_when(CellTypes %in% c("pNPC", "NPC-1", "Early_Nephron", "UrEp", "Early_Stroma") ~ "Nephron & Stroma",
+                           CellTypes %in% c("IM-3", "AdvMeso-1", "AdvMeso-2", "AdvMeso-3", "Myotome") ~ "OffTarget Mesoderm",
+                           CellTypes %in% c("Neural_Crest", "Early_Neuron") ~ "OffTarget Neural")) %>% 
+  mutate(Lineage = fct_relevel(Lineage, "OffTarget Mesoderm", "OffTarget Neural", "Nephron & Stroma"))
+
+
+```
+
+
+```{r, fig.width=14, fig.height=6}
+ggplot(ComponentHeatMapDF(s3df, "condition", "CellTypes", tidy = T) %>% 
+           mutate(Identity = fct_relevel(Identity, 
+            "3c4F200", "3c4F", "3c4FG", "3c4FA", "3c4FC", "3c4FL", "3c4E",
+            "4c4F200", "4c4F", "4c4FG", "4c4FA", "4c4FC", "4c4FL", "4c4E", "4c3F",
+            "5c4F200", "5c4F", "5c4FG", "5c4FA", "5c4FC", "5c4FL", "5c4E", "5c2F",)) %>% 
+         mutate(text_color_choice = ifelse(Pct > 30, "black", "white"))) +
+  geom_tile(aes(Identity, reorder(Component, -Cells), fill = Pct), colour = "white") +
+  geom_text(aes(Identity, reorder(Component, -Cells), label = ifelse(Pct>9.9, yes = round(Pct, 0), no = round(Pct, 1)), colour = text_color_choice)) +
+  #geom_label(aes(Identity, Component, label = Pct)) +
+  viridis::scale_fill_viridis() + 
+  scale_colour_manual(values = c("black", "white")) +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1)) -> a
+
+# need to order colours across all conditions and stages
+ggplot(ComponentHeatMapDF(s3df, "condition", "Lineage", tidy = T) %>% 
+         mutate(Identity = fct_relevel(Identity, 
+            "3c4F200", "3c4F", "3c4FG", "3c4FA", "3c4FC", "3c4FL", "3c4E",
+            "4c4F200", "4c4F", "4c4FG", "4c4FA", "4c4FC", "4c4FL", "4c4E", "4c3F",
+            "5c4F200", "5c4F", "5c4FG", "5c4FA", "5c4FC", "5c4FL", "5c4E", "5c2F"),
+            Component = fct_relevel(Component, "OffTarget Mesoderm", "OffTarget Neural", "Nephron & Stroma"))) +
+  geom_col(aes(Identity, Cells, fill = Component), colour = "black") + 
+  #scale_fill_brewer(palette = "Paired") +
+  scale_fill_manual(values = c("grey", "brown", "blue")) +
+  theme(axis.text.x = element_blank()) -> b
+
+ggplot(ComponentHeatMapDF(s3df, "chir", "CellTypes", tidy = T)) +
+  geom_col(aes(Cells, reorder(Component, -Cells), fill = Identity), colour = "black") + 
+    viridis::scale_fill_viridis(discrete=TRUE) +
+  #scale_y_log10() +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1),
+        axis.text.y = element_blank()) -> c
+
+
+print((a + b + c + plot_layout(design = "
+                        bb#
+                        aac", guides = "collect") & theme(axis.title = element_blank())) -> plot)
+
+ggsave(
+  plot = plot,
+  filename = "png/Stage3_HeatBarCombo_Condition.png",
+  width = 14, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.width=7, fig.height=5}
+ggplot(ComponentHeatMapDF(s3df, "gf", "CellTypes", tidy = T) %>% 
+           mutate(Identity = fct_relevel(Identity, 
+            "4F200", "4F", "4FG", "4FA", "4FC", "4FL", "4E", "3F", "2F",)) %>% 
+         mutate(text_color_choice = ifelse(Pct > 30, "black", "white"))) +
+  geom_tile(aes(Identity, reorder(Component, -Cells), fill = Pct), colour = "white") +
+  geom_text(aes(Identity, reorder(Component, -Cells), label = ifelse(Pct>9.9, yes = round(Pct, 0), no = round(Pct, 1)), colour = text_color_choice)) +
+  #geom_label(aes(Identity, Component, label = Pct)) +
+  viridis::scale_fill_viridis() + 
+  scale_colour_manual(values = c("black", "white")) +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1)) -> a
+
+# need to order colours across all conditions and stages
+ggplot(ComponentHeatMapDF(s3df, "gf", "Lineage", tidy = T) %>% 
+         mutate(Identity = fct_relevel(Identity, 
+           "4F200", "4F", "4FG", "4FA", "4FC", "4FL", "4E", "3F", "2F"),
+            Component = fct_relevel(Component, "OffTarget Mesoderm", "OffTarget Neural", "Nephron"))) +
+  geom_col(aes(Identity, Cells, fill = Component), colour = "black") + 
+  #scale_fill_brewer(palette = "Paired") +
+  scale_fill_manual(values = c("grey", "brown", "blue")) +
+  theme(axis.text.x = element_blank()) -> b
+
+ggplot(ComponentHeatMapDF(s3df, "chir", "CellTypes", tidy = T)) +
+  geom_col(aes(Cells, reorder(Component, -Cells), fill = Identity), colour = "black") + 
+    viridis::scale_fill_viridis(discrete=TRUE) +
+  #scale_y_log10() +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1),
+        axis.text.y = element_blank()) -> c
+
+
+print((a + b + c + plot_layout(design = "
+                        bb#
+                        aac
+                        aac", guides = "collect") & theme(axis.title = element_blank())) -> plot)
+
+ggsave(
+  plot = plot,
+  filename = "png/Stage3_HeatBarCombo_GF.png",
+  width = 7, # Width in inches
+  height = 5,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+TNSE split all conditions
+
+
+```{r, fig.width=8, fig.height=6}
+(DimPlot(all, group.by = "Lineage", reduction = "tsne.pca50", cols = lineage.cols) & NoAxes()) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/All_tsne_lineages.png",
+  width = 8, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+```{r}
+
+dimsplit <- map(1:length(conds), ~DimPlot(all[, all$stage_condition %in% alist[[.x]]],
+                                          group.by = "Lineage", 
+                                          cols = lineage.cols, 
+                                          raster = F, reduction = "tsne.pca50") + NoLegend() + NoAxes() + ggtitle(conds[.x]))
+```
+
+
+
+```{r, fig.height=16, fig.width=8}
+ord <- c(1,8,15,2,9,16,3,10,17,4,11,18,5,12,19,6,13,20,7,14,21)
+patchwork::wrap_plots(dimsplit[ord], ncol=3) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/All_tsne_split_lineages.png",
+  width = 8, # Width in inches
+  height = 16,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.height=8, fig.width=16}
+patchwork::wrap_plots(dimsplit, ncol=7) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/All_tsne_split_lineages_h.png",
+  width = 16, # Width in inches
+  height = 8,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+UMAP plots for stages 1, 2 and 3
+
+```{r}
+s1 <- read_rds("data/Wilson_KidneyOrganoid_Stage1.rds")
+s2 <- read_rds("data/Wilson_KidneyOrganoid_Stage2.rds")
+s3 <- read_rds("data/Wilson_KidneyOrganoid_Stage3.rds")
+
+```
+
+```{r}
+StrDotPlot(s1, group.by = "CellTypes",
+           features = c("EPCAM", "POU5F1", "SOX2", "ESRG", "ZSCAN10", "T")) -> plot
+plot
+```
+
+
+```{r, fig.width=4, fig.height=3}
+(DimPlot(s1, group.by = "CellTypes", reduction = "umap",
+        label = T, repel = T, label.size = 5, label.box = T) & NoLegend() + NoAxes()) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S1_UMAP_CellTypes.png",
+  width = 4, # Width in inches
+  height = 3,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.width=4, fig.height=2}
+(ComponentBar(s1@meta.data, identity = "CellTypes", component = "chir", show.pct = T, show.text = 25) +
+   scale_fill_viridis(discrete = T) + coord_flip()) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S1_CompBarChart_CellTypes.png",
+  width = 4, # Width in inches
+  height = 2,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+```{r, fig.width=8, fig.height=6}
+s2$CellTypesOrder <- factor((s2df)$CellTypes, levels = unique(s2df$CellTypes))
+(DimPlot(s2, group.by = "CellTypesOrder", reduction = "umap", cols = ggplotColors(8),
+        label = T, repel = T, label.size = 7, label.box = T) & NoLegend() + NoAxes()) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S2_UMAP_CellTypes.png",
+  width = 8, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.width=6, fig.height=6}
+(DimPlot(s3, group.by = "CellTypes", reduction = "umap",
+        label = T, repel = T, label.size = 5, label.box = T) & NoLegend() + NoAxes()) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S3_UMAP_CellTypes.png",
+  width = 6, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+HOX code
+
+```{r}
+hox <- map(1:13, ~c(paste0("HOXA", .x), 
+                    paste0("HOXB", .x),
+                    paste0("HOXC", .x),
+                    paste0("HOXD", .x))) %>% unlist()
+
+hox <- hox[hox %in% rownames(all)]
+hox
+```
+
+```{r, fig.width=16}
+StrDotPlot(all, features = hox, group.by = "stage")
+sdp.ann <- map(1:4, ~StrDotPlot(all[, all$stage==paste0("Stage", .x)], features = hox, group.by = "ann"))
+sdp.cond <- map(1:4, ~StrDotPlot(all[, all$stage==paste0("Stage", .x)], features = hox, group.by = "condition"))
+```
+
+
+```{r, fig.width=24, fig.height=20}
+c(sdp.ann, sdp.cond) %>% wrap_plots(design = "
+                                    ae
+                                    bf
+                                    bf
+                                    cg
+                                    cg
+                                    cg
+                                    dh
+                                    dh
+                                    dh
+                                    dh")
+```
+```{r, fig.height=4}
+(StrDotPlot(s1, group.by = "chir", features = hox) & NoAxes()) +
+(StrDotPlot(s2, group.by = "chir", features = hox) & NoAxes()) +
+(StrDotPlot(s3, group.by = "chir", features = hox) & NoAxes()) +
+(StrDotPlot(s4, group.by = "chir", features = hox) ) + 
+  plot_layout(design = "
+              a
+              b
+              c
+              d
+              ")
+  
+```
+```{r}
+
+# ── 1. Extract DotPlot data from each object ─────────────────────────────────
+extract_dot_data <- function(seurat_obj, label) {
+  # Use your StrDotPlot if it exposes $data, otherwise fall back to DotPlot
+  dp <- DotPlot(seurat_obj, group.by = "chir", features = hox)
+  dp$data %>%
+    mutate(dataset = label)
+}
+
+dot_data <- bind_rows(
+  extract_dot_data(s1, "s1"),
+  extract_dot_data(s2, "s2"),
+  extract_dot_data(s3, "s3"),
+  extract_dot_data(s4, "s4")
+)
+
+# ── 2. Factorise to preserve ordering ────────────────────────────────────────
+dot_data <- dot_data %>%
+  mutate(
+    features.plot = factor(features.plot, levels = hox),
+    dataset       = factor(dataset, levels = c("s1", "s2", "s3", "s4"))
+  )
+
+# ── 3. Heatmap (fill = scaled expression, alpha = pct expressed) ─────────────
+p <- ggplot(dot_data, aes(x = features.plot, y = id)) +
+  geom_tile(aes(fill = avg.exp), colour = "white", linewidth = 0.3) +
+  geom_point(aes(size = pct.exp), shape = 21, colour = "black", stroke = 0.9, fill = NA) +
+  scale_fill_gradient(
+    low  = "white",
+    high = "#b2182b",
+    name = "Avg\nexpression"
+  ) +
+  scale_size_continuous(range = c(0, 4), name = "% expressed") +
+  facet_wrap(~ dataset, ncol = 1, strip.position = "left") +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x       = element_text(angle = 45, hjust = 1, face = "italic"),
+    axis.text.y       = element_text(size = 8),
+    axis.title        = element_blank(),
+    strip.text.y.left = element_text(angle = 0, hjust = 1, face = "bold"),
+    panel.grid        = element_blank(),
+    legend.position   = "right"
+  )
+
+
+
+
+```
+
+```{r, fig.height=4, fig.width=12}
+p
+```
+Only show F200
+
+```{r}
+
+# ── 1. Extract DotPlot data from each object ─────────────────────────────────
+extract_dot_data <- function(seurat_obj, label) {
+  # Use your StrDotPlot if it exposes $data, otherwise fall back to DotPlot
+  dp <- DotPlot(seurat_obj, group.by = "chir", features = hox)
+  dp$data %>%
+    mutate(dataset = label)
+}
+
+dot_data <- bind_rows(
+  extract_dot_data(s1, "s1"),
+  extract_dot_data(s2[, s2$gf=="4F200"], "s2"),
+  extract_dot_data(s3[, s3$gf=="4F200"], "s3"),
+  extract_dot_data(s4[, s4$gf=="4F200"], "s4")
+)
+
+# ── 2. Factorise to preserve ordering ────────────────────────────────────────
+dot_data <- dot_data %>%
+  mutate(
+    features.plot = factor(features.plot, levels = hox),
+    dataset       = factor(dataset, levels = c("s1", "s2", "s3", "s4"))
+  )
+
+# ── 3. Heatmap (fill = scaled expression, alpha = pct expressed) ─────────────
+q <- ggplot(dot_data, aes(x = features.plot, y = id)) +
+  geom_tile(aes(fill = avg.exp), colour = "white", linewidth = 0.3) +
+  geom_point(aes(size = pct.exp), shape = 21, fill = NA, colour = "black", stroke = 0.9) +
+  scale_fill_gradient(
+    low  = "white",
+    high = "#b2182b",
+    name = "Avg\nexpression"
+  ) +
+  scale_size_continuous(range = c(0, 4), name = "% expressed") +
+  facet_wrap(~ dataset, ncol = 1, strip.position = "left") +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x       = element_text(angle = 45, hjust = 1, face = "italic"),
+    axis.text.y       = element_text(size = 8),
+    axis.title        = element_blank(),
+    strip.text.y.left = element_text(angle = 0, hjust = 1, face = "bold"),
+    panel.grid        = element_blank(),
+    legend.position   = "right"
+  )
+
+
+
+
+```
+
+```{r, fig.height=4, fig.width=12}
+q
+```
+
+```{r}
+
+# ── 1. Extract DotPlot data from each object ─────────────────────────────────
+extract_dot_data <- function(seurat_obj, label) {
+  # Use your StrDotPlot if it exposes $data, otherwise fall back to DotPlot
+  dp <- DotPlot(seurat_obj, group.by = "gf", features = hox)
+  dp$data %>%
+    mutate(dataset = label)
+}
+
+dot_data <- bind_rows(
+  #extract_dot_data(s1, "s1"),
+  extract_dot_data(s2[, s2$gf %!in% c("2F", "3F")], "s2"),
+  #extract_dot_data(s3, "s3"),
+  extract_dot_data(s4, "s4")
+)
+
+# ── 2. Factorise to preserve ordering ────────────────────────────────────────
+dot_data <- dot_data %>%
+  mutate(
+    features.plot = factor(features.plot, levels = hox),
+    dataset       = factor(dataset, levels = c("s2", "s4")),
+    id            = factor(id, levels = c("4F", "4F200", "4FA", "4FC", "4FL", "4E", "4FG"))
+  )
+
+# ── 3. Heatmap (fill = scaled expression, alpha = pct expressed) ─────────────
+s <- ggplot(dot_data, aes(x = features.plot, y = id)) +
+  geom_tile(aes(fill = avg.exp), colour = "white", linewidth = 0.3) +
+  geom_point(aes(size = pct.exp), shape = 21, fill = NA, colour = "black", stroke = 0.9) +
+  scale_fill_gradient(
+    low  = "white",
+    high = "#b2182b",
+    name = "Avg\nexpression"
+  ) +
+  scale_size_continuous(range = c(0, 4), name = "% expressed") +
+  facet_wrap(~ dataset, ncol = 1, strip.position = "left") +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x       = element_text(angle = 45, hjust = 1, face = "italic"),
+    axis.text.y       = element_text(size = 8),
+    axis.title        = element_blank(),
+    strip.text.y.left = element_text(angle = 0, hjust = 1, face = "bold"),
+    panel.grid        = element_blank(),
+    legend.position   = "right"
+  )
+
+
+
+
+```
+
+```{r, fig.height=6, fig.width=12}
+s
+```
+
+```{r}
+# ── 2. Factorise to preserve ordering ────────────────────────────────────────
+dot_data <- dot_data %>%
+  filter(features.plot %in% c("HOXA10", "HOXC10", "HOXD10", "HOXA11", "HOXC11", "HOXD11")) %>% 
+  mutate(
+    features.plot = factor(features.plot, levels = c("HOXA10", "HOXC10", "HOXD10", "HOXA11", "HOXC11", "HOXD11")),
+    dataset       = factor(dataset, levels = c("s2", "s4")),
+    id            = factor(id, levels = c("4F", "4F200", "4FA", "4FC", "4FL", "4E", "4FG"))
+  )
+
+# ── 3. Heatmap (fill = scaled expression, alpha = pct expressed) ─────────────
+q <- ggplot(dot_data, aes(x = features.plot, y = id)) +
+  geom_tile(aes(fill = avg.exp), colour = "white", linewidth = 0.3) +
+  geom_point(aes(size = pct.exp), shape = 21, fill = NA, colour = "black", stroke = 0.9) +
+  scale_fill_gradient(
+    low  = "white",
+    high = "#b2182b",
+    name = "Avg\nexpression"
+  ) +
+  scale_size_continuous(range = c(0, 4), name = "% expressed") +
+  facet_wrap(~ dataset, ncol = 1, strip.position = "left") +
+  theme_minimal(base_size = 11) +
+  theme(
+    axis.text.x       = element_text(angle = 45, hjust = 1, face = "italic"),
+    axis.text.y       = element_text(size = 8),
+    axis.title        = element_blank(),
+    strip.text.y.left = element_text(angle = 0, hjust = 1, face = "bold"),
+    panel.grid        = element_blank(),
+    legend.position   = "right"
+  )
+
+```
+
+```{r, fig.height=4, fig.width=6}
+q
+```
+
+
+## Figure 3
+
+```{r}
+s2.dm <- read_csv(here::here("data/tables/DiffMap_Stage2.csv"))
+s2.um <- s2@reductions$umap@cell.embeddings %>% as.data.frame()
+```
+
+```{r, fig.width=24, fig.height=8}
+(
+  (ggplot((s2.dm %>% mutate(Stage = (s2df)$stage,
+                                    CellTypes = factor((s2df)$CellTypes, levels = unique(s2df$CellTypes)),
+                                    GF = s2df$gf,
+                                    CHIR = s2df$chir))) +
+             geom_point(aes(DC1, DC2, colour = CellTypes), size = 1)) +
+          lims(x = c(-0.01, 0.02), y = c(-0.03, 0.015)) +
+          ggtitle("Stage 2") +
+    scale_colour_discrete(ggplotColors(8)) +
+          #geom_hline(yintercept=0, linetype = "dashed", alpha = 0.5) + geom_vline(xintercept=0, linetype="dashed", alpha = 0.5) +
+          theme_minimal() +
+          theme(axis.title = element_blank(),
+                axis.text = element_blank(),
+                axis.ticks = element_blank(),
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank(),
+                legend.text = element_text(size=15)) |
+
+(ggplot((s2.um %>% mutate(Stage = (s2df)$stage,
+                                    CellTypes = factor((s2df)$CellTypes, levels = unique(s2df$CellTypes)),
+                                    GF = s2df$gf,
+                                    CHIR = s2df$chir))) +
+             geom_point(aes(UMAP_1, UMAP_2, colour = CellTypes), size = 1)) +
+          #lims(x = c(-0.01, 0.02), y = c(-0.03, 0.015)) +
+          ggtitle("Stage 2") +
+          #geom_hline(yintercept=0, linetype = "dashed", alpha = 0.5) + geom_vline(xintercept=0, linetype="dashed", alpha = 0.5) +
+          theme_minimal() +
+          theme(axis.title = element_blank(),
+                axis.text = element_blank(),
+                panel.grid.major = element_blank(),
+                panel.grid.minor = element_blank(),
+                axis.ticks = element_blank())
+) -> plot
+
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S2_UMAP&DC_CellTypes.png",
+  width = 24, # Width in inches
+  height = 8,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+```{r, fig.height=6, fig.width=14}
+blist <- list()
+for (i in 3:5){
+  blist[[paste0("chir", i)]] <- 
+    map(1:6, ~
+          (ggplot((s2.dm %>% mutate(Stage = (s2df)$stage,
+                                    CellTypes = factor((s2df)$CellTypes, levels = unique(s2df$CellTypes)),
+                                    GF = s2df$gf,
+                                    CHIR = s2df$chir)) %>% 
+                    filter(GF == c("4F", "4F200", "4FA", "4FC", "4FL", "4E")[.x],
+                           CHIR == paste0(i, "c"))) +
+             geom_point(aes(DC1, DC2, colour = CellTypes), size = 0.2)) +
+          lims(x = c(-0.01, 0.02), y = c(-0.03, 0.015)) +
+          ggtitle(paste0(i, "c", c("4F", "4F200", "4FA", "4FC", "4FL", "4E")[.x])) +
+          #geom_hline(yintercept=0, linetype = "dashed", alpha = 0.5) + geom_vline(xintercept=0, linetype="dashed", alpha = 0.5) +
+          theme_linedraw() +
+          theme(axis.title = element_blank(),
+                axis.text = element_blank(),
+                plot.title = element_text(size=20, hjust = 0.5),
+                axis.ticks = element_blank())
+    )
+}
+(map(1:3, ~blist[[.x]] %>% wrap_plots(ncol=6)) %>% wrap_plots(nrow=3) & NoLegend()) -> plot
+
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S2_UMAP_CellTypes_ConditionSplit.png",
+  width = 14, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.height=6, fig.width=14}
+clist <- list()
+for (i in 3:5){
+  clist[[paste0("chir", i)]] <- 
+    map(1:6, ~
+          (ggplot((s2.um %>% mutate(Stage = (s2df)$stage,
+                                    CellTypes = factor((s2df)$CellTypes, levels = unique(s2df$CellTypes)),
+                                    GF = s2df$gf,
+                                    CHIR = s2df$chir)) %>% 
+                    filter(GF == c("4F", "4F200", "4FA", "4FC", "4FL", "4E")[.x],
+                           CHIR == paste0(i, "c"))) +
+             geom_point(aes(UMAP_1, UMAP_2, colour = CellTypes), size = 0.2)) +
+          #lims(x = c(-0.01, 0.02), y = c(-0.03, 0.015)) +
+          ggtitle(paste0(i, "c", c("4F", "4F200", "4FA", "4FC", "4FL", "4E")[.x])) +
+          #geom_hline(yintercept=0, linetype = "dashed", alpha = 0.5) + geom_vline(xintercept=0, linetype="dashed", alpha = 0.5) +
+          theme_linedraw() +
+          theme(axis.title = element_blank(),
+                axis.text = element_blank(),
+                plot.title = element_text(size=20, hjust = 0.5),
+                axis.ticks = element_blank())
+    )
+}
+(map(1:3, ~clist[[.x]] %>% wrap_plots(ncol=6)) %>% wrap_plots(nrow=3) & NoLegend()) -> plot
+
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S2_DC_CellTypes_ConditionSplit.png",
+  width = 14, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.height=6, fig.width=9}
+(DimPlot(s2[, s2$gf %in% c("2F", "3F", "4FC")], group.by = "CellTypesOrder", reduction = "umap", cols = ggplotColors(8), split.by = "condition", 
+        label.size = 7, label.box = T, ncol = 3)+
+   theme(plot.subtitle = element_text(size=10, hjust = 0.5)) & NoLegend() + NoAxes()) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S2_UMAP_CellTypes_shortdiff.png",
+  width = 7, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r}
+s2.ge <- all[, all$stage=="Stage2"]@assays$SCT@counts %>% as.data.frame() %>% t() %>% as.data.frame()
+```
+
+
+
+```{r}
+# long graph
+s2.dm.ge <- (s2.dm %>% mutate(CellTypes = s2df$CellTypes, Condition = s2df$condition,
+                         PDGFRA = s2.ge$PDGFRA,
+                         ITGA8 = s2.ge$ITGA8,
+                         TCF15 = s2.ge$TCF15,
+                         FOXD1 = s2.ge$FOXD1,
+                         SOX2 = s2.ge$SOX2,
+                         PAX3 = s2.ge$PAX3,
+                         PAX8 = s2.ge$PAX8,
+                         ZIC2 = s2.ge$ZIC2,
+                         MEOX2 = s2.ge$MEOX2,
+                         FOXC2 = s2.ge$FOXC2,
+                         WT1 = s2.ge$WT1,
+                         TBX6 = s2.ge$TBX6))
+             
+
+```
+
+
+
+```{r, fig.height=6, fig.width=18}
+# --- 2. Define the list of genes to plot ---
+# Make sure these gene names exist as columns in your s2.dm.ge data frame
+
+genes_to_plot <- c(
+  "TBX6", "PAX8", "PDGFRA", "TCF15", "SOX2",
+  "FOXC2", "ITGA8", "MEOX2", "PAX3", "ZIC2"
+)
+
+# --- 3. Create the list of plots using a for loop ---
+# We'll initialize an empty list to store the plots
+plot_list <- list()
+
+# Iterate over the list of genes
+for (gene in genes_to_plot) {
+  # Build the plot for the current gene
+  p <- ggplot(s2.dm.ge %>% arrange(!!sym(gene))) +
+    geom_point(aes(DC1, DC2, colour = !!sym(gene)), size = 0.5, alpha = 0.5) +
+    lims(x = c(-0.01, 0.01), y = c(-0.03, 0.015)) +
+    theme_linedraw() +
+          theme(axis.title = element_blank(),
+                axis.text = element_blank(),
+                plot.title = element_text(size=20, hjust = 0.5),
+                axis.ticks = element_blank()) +
+    # Use theme_void() to remove all axis elements
+    #theme_void() +
+    ggtitle(gene) +
+    theme(legend.position = "none") +
+    scale_colour_viridis(direction = -1)
+
+  # Add the plot to our list, named by the gene
+  plot_list[[gene]] <- p
+}
+
+# --- 4. Print all plots in the list ---
+# This will display all the plots in a grid or sequentially,
+# depending on your R environment.
+(plot_list %>% wrap_plots(ncol=5)) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S2_DC_GEs.png",
+  width = 18, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+(p + scale_colour_viridis(direction = -1) + theme(legend.position = "right")) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S2_DC_GEs_scale.png",
+  width = 6, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.height=9, fig.width=9}
+# --- 2. Define the list of genes to plot ---
+# Make sure these gene names exist as columns in your s2.dm.ge data frame
+
+genes_to_plot <- c(
+  "TBX6", "PAX8", "TCF15", "SOX2",
+ "MEOX2", "PAX3"
+)
+
+# --- 3. Create the list of plots using a for loop ---
+# We'll initialize an empty list to store the plots
+plot_list <- list()
+
+# Iterate over the list of genes
+for (gene in genes_to_plot) {
+  # Build the plot for the current gene
+  p <- ggplot(s2.dm.ge %>% arrange(!!sym(gene))) +
+    geom_point(aes(DC1, DC2, colour = !!sym(gene)), size = 0.5, alpha = 0.5) +
+    lims(x = c(-0.01, 0.01), y = c(-0.03, 0.015)) +
+    theme_linedraw() +
+          theme(axis.title = element_blank(),
+                axis.text = element_blank(),
+                plot.title = element_text(size=20, hjust = 0.5),
+                axis.ticks = element_blank()) +
+    # Use theme_void() to remove all axis elements
+    #theme_void() +
+    ggtitle(gene) +
+    theme(legend.position = "none") +
+    scale_colour_viridis(direction = -1)
+
+  # Add the plot to our list, named by the gene
+  plot_list[[gene]] <- p
+}
+
+# --- 4. Print all plots in the list ---
+# This will display all the plots in a grid or sequentially,
+# depending on your R environment.
+(plot_list %>% wrap_plots(ncol=2)) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S2_DC_selectGEs.png",
+  width = 9, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+(p + scale_colour_viridis(direction = -1) + theme(legend.position = "right")) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/S2_DC_GEs_scale.png",
+  width = 6, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+CAT analysis and DC
+
+```{r}
+s1234.dc <- read_csv(here::here("data/tables/DiffMap_Stage1234.csv"))
+d1 <- data.frame(cell = colnames(all))
+s1234.dc <- s1234.dc %>% mutate(cell = colnames(all[, all$stage != "iPSC"]))
+d2 <- left_join(d1, s1234.dc, by = "cell") %>% column_to_rownames("cell")
+d2 <- d2 %>% replace(is.na(.), 0)
+d2 <- -d2
+d2$DC2 <- 2*d2$DC2
+all@reductions[["dc"]] <- CreateDimReducObject(embeddings = as.matrix(d2), key = "DC_", assay = "RNA")
+```
+
+
+```{r}
+b <- DimPlot(all[, all$stage != "iPSC"], group.by = "stage", reduction = "dc", dims = c(1,2)) + 
+  scale_color_brewer(palette = "Set1") 
+c <- DimPlot(all[, all$stage != "iPSC"], group.by = "stage", reduction = "dc", dims = c(2,3)) + 
+  scale_color_brewer(palette = "Set1") 
+
+
+```
+
+```{r, fig.width=9, fig.height=6}
+(b + c + plot_layout(design = "bcccc", guides = "collect") & theme(legend.text = element_text(size=30),
+                                                                  axis.title = element_text(size=30),
+                                                                  axis.text = element_blank(),
+                                                                  axis.ticks = element_blank())) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/DiffusionPlotting_all.png",
+  width = 9, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r}
+dc <- d2 %>% mutate(CT = all$CellTypes) %>% 
+  group_by(CT) %>%
+  summarise(DC3.mean = mean(DC3),
+            DC2.mean = mean(DC2),
+            DC2overDC3 = mean(DC2) > mean(DC3),
+            n = n())
+d2 <- d2 %>% mutate(dc2.order = factor(all$CellTypes, levels = unique((dc %>% arrange(dc$DC2.mean))$CT)),
+                    dc3.order = factor(all$CellTypes, levels = unique((dc %>% arrange(dc$DC3.mean))$CT)),
+                    
+                    stage = all$stage,
+                    CellTypes = all$CellTypes)
+```
+
+```{r, fig.height=9, fig.width=9}
+(ggplot(d2 %>% filter(stage %in% c("Stage2", "Stage3", "Stage4"),
+                     CellTypes %in% dc[dc$DC2overDC3,]$CT)) +
+  geom_violin(aes(DC2, dc2.order, colour = stage), alpha = 0.7) +
+  scale_colour_discrete(type = brewer.pal(4, "Set1")[2:4]) +
+  theme_minimal() +
+  theme(axis.title.x = element_text(size=20),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size=20),
+        legend.position = "none") |
+ggplot(d2 %>% filter(stage %in% c("Stage2", "Stage3", "Stage4"),
+                     CellTypes %!in% dc[dc$DC2overDC3,]$CT)) +
+  geom_violin(aes(DC3, dc3.order, colour = stage), alpha = 0.7) +
+  scale_colour_discrete(type = brewer.pal(4, "Set1")[2:4]) +
+  theme_minimal() +
+  theme(axis.title.x = element_text(size=20),
+        axis.title.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size=20),
+        legend.position = "none")) -> plot
+
+plot
+
+ggsave(
+  plot = plot,
+  filename = "png/DiffMap_violins.png",
+  width = 9, # Width in inches
+  height = 9,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r}
+df <- read_csv(here::here("analysis/Submission2/CAT/abs_distances_table20250508.csv"))
+head(df)
+
+
+df.theme <- theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+                  panel.background = element_rect(fill = "white"),
+                  panel.grid = element_blank())
+df$Query <- df$oc
+df$Reference <- df$c_j
+
+df$Query <- gsub("^2_t", "early_pPS_t", df$Query)
+df$Query <- gsub("^4_t", "late_pPS_1_t", df$Query)
+df$Query <- gsub("^3_t", "late_pPS_2_t", df$Query)
+df$Query <- gsub("^1_t", "NMP_t", df$Query)
+
+df$Reference <- gsub("^2_t", "early_pPS_t", df$Reference)
+df$Reference <- gsub("^4_t", "late_pPS_1_t", df$Reference)
+df$Reference <- gsub("^3_t", "late_pPS_2_t", df$Reference)
+df$Reference <- gsub("^1_t", "NMP_t", df$Reference)  
+
+df$Query <- factor(df$Query, levels = c(paste0(c("early_pPS", "late_pPS_1", "late_pPS_2","NMP"), "_t1"),
+                                     paste0(unique((all@meta.data %>% filter(stage == "Stage2"))$CellTypes), "_t2"),
+                                     paste0(unique((all@meta.data %>% filter(stage == "Stage3"))$CellTypes), "_t3"),
+                                     paste0(unique((all@meta.data %>% filter(stage == "Stage4"))$CellTypes), "_t4")))
+df$Reference <- factor(df$Reference, levels = c(paste0(c("early_pPS", "late_pPS_1", "late_pPS_2","NMP"), "_t1"),
+                                         paste0(unique((all@meta.data %>% filter(stage == "Stage2"))$CellTypes), "_t2"),
+                                         paste0(unique((all@meta.data %>% filter(stage == "Stage3"))$CellTypes), "_t3"),
+                                         paste0(unique((all@meta.data %>% filter(stage == "Stage4"))$CellTypes), "_t4")))
+  
+df$Distance <- df$`<d_ij>`
+df$Sig <- 1/(log10(df$q_ij+1)+1)
+#df$Sig <- df$`std_<d_ij>`
+
+substrRight <- function(x, n){
+  substr(x, nchar(x)-n+1, nchar(x))
+}
+
+df$Query.stage <- substrRight(as.character(df$Query), 2)
+df$Reference.stage <- substrRight(as.character(df$Reference), 2)
+df$QSequalsRS <- df$Query.stage == df$Reference.stage
+```
+
+
+```{r, fig.width=14, fig.height=10, dpi=600}
+(ggplot() +
+  geom_point(data = df[df$QSequalsRS,], aes(Query, Reference, colour = log10(Distance), size = Sig)) +
+  scale_colour_gradient2(low = "navy", mid = "lightblue", high = "grey", midpoint = log10(75),
+                         breaks = c(0, log10(75), log10(150)),
+                         limits = c(0, log10(150))) +
+
+  
+  ggnewscale::new_scale_color() + # makes a new scale for the next part of the plot. pretty cool function!
+  
+  geom_point(data = df[!df$QSequalsRS,], aes(Query, Reference, colour = Distance, size = Sig)) +
+  scale_colour_gradient2(low = "darkgreen", mid = "lightgreen", high = "grey", midpoint = .5*log10(150),
+                         breaks = c(0, 75, 150),
+                         limits = c(0, 150)) +
+  df.theme +
+  theme(axis.title = element_text(size=20),
+        axis.text = element_text(size=12))) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/CAT_global_Dotplot.png",
+  width = 14, # Width in inches
+  height = 10,  # Height in inches
+  dpi = 600   # Resolution in dots per inch
+)
+```
+
+## Figure 5
+
+
+```{r}
+df <- map(c("3c", "4c", "5c"), ~
+            ComponentHeatMapDF(s4@meta.data %>% filter(chir %in% .x), identity = "condition", component = "CellTypes") %>% 
+            transmute(Identity = Identity, Component = Component, Pct = Pct) %>% 
+            filter(Identity %in% c(paste0(.x, c("4F", "4F200")))) %>% 
+            pivot_wider(names_from = c("Identity"), values_from = "Pct") %>% 
+            `colnames<-`(c("Component", "Control", "Test")) %>% 
+            mutate(Difference = Test-Control,
+                   CHIR = .x) 
+)
+
+df <- bind_rows(df[[1]], df[[2]]) %>% bind_rows(df[[3]])
+df <- df %>% 
+  arrange(-abs(Difference))
+df$Component <- factor(df$Component, levels = rev(unique(df$Component)))
+```
+
+
+```{r, fig.width=5, fig.height=7}
+(df %>% 
+  
+  ggplot() +
+  
+  geom_col(aes(Difference, Component, fill = CHIR), colour = "black", position = "dodge", stat = "identity", width = 0.7) +
+  
+  
+  scale_fill_discrete(type = cc) +
+  
+  xlim(c(-70, 35)) +
+  theme_light() +
+  theme(legend.position = "bottom",
+        axis.text = element_text(size=15)
+  )) -> plot
+
+plot
+ggsave(
+  plot = plot,
+  filename = "png/PopDiff_Stage4_FvsF200.png",
+  width = 5, # Width in inches
+  height = 7,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+```
+
+```{r, fig.width=18, fig.height=9}
+(DimPlot(s4[, s4$gf %!in% c("4FL")], group.by = "CellTypesOrder", cols = s4.cols, ncol=6, split.by = "condition") + NoAxes() +
+        
+  theme(axis.text = element_blank(),
+        legend.text = element_text(size=10),
+        #axis.title = element_text(size=5),
+        legend.position = "bottom",
+        axis.ticks = element_blank())) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/Stage4_UMAP_CellTypes_GFsplit.png",
+  width = 18, # Width in inches
+  height = 9,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+```
+
+
+
+
+
+```{r}
+df <- ComponentHeatMapDF(s4@meta.data, "condition", "CellTypes") %>% 
+  mutate(chir = paste0(str_split(Identity, "c", simplify = T)[,1], "c"),
+         gf = str_split(Identity, "c", simplify = T)[,2],
+         Stage = "Stage4")
+
+df2 <- ComponentHeatMapDF(s3@meta.data, "condition", "CellTypes") %>% 
+  mutate(chir = paste0(str_split(Identity, "c", simplify = T)[,1], "c"),
+         gf = str_split(Identity, "c", simplify = T)[,2],
+         Stage = "Stage3")
+
+df3 <- ComponentHeatMapDF(s2@meta.data, "condition", "CellTypes") %>% 
+  mutate(chir = paste0(str_split(Identity, "c", simplify = T)[,1], "c"),
+         gf = str_split(Identity, "c", simplify = T)[,2],
+         Stage = "Stage2")
+```
+
+```{r}
+## legacy code for other plots
+#ggplot(df %>% filter(gf %in% c("4F200", "4F"))) +
+#  geom_point(aes(chir, gf, colour = Pct, size = Pct)) +
+#  #geom_tile(data = filter(df2, Query %!in% c("EN", "EDT", "DT", "EPT", "EPod", "Pod", "PEC") &
+#  #                           Reference != "Nephron" & GF %in% c("4F", "4F200")), aes(CHIR, GF, fill = Distance), colour = "black") +
+#  facet_wrap(facets = vars(Component), ncol = 9) +
+#  #scale_colour_gradient2(low = "navy", mid = "lightblue", high = "grey", midpoint = 50,
+#  #scale_colour_gradient2(low = "purple", mid = "lightblue", high = "yellow", midpoint = 50,
+#  scale_colour_gradient2(low = "blue", mid = "orange", high = "red", midpoint = 50,
+#                         breaks = c(0,50,100),
+#                         limits = c(0,100)) +
+#  #scale_fill_viridis_b() +
+#  theme_linedraw() +
+#  df.theme  + theme(axis.text = element_text(size=14))
+#
+#ggplot(df %>% filter(gf %in% c("4F200", "4F"))) +
+#  geom_point(aes(chir, gf, colour = Pct, size = Pct)) +
+#  geom_tile(aes(chir, gf, fill = Pct), colour = "white") +
+#  facet_wrap(facets = vars(Component), ncol = 12) +
+#  
+#  scale_fill_viridis() +
+#  theme_linedraw() +
+#  df.theme  + theme(axis.text = element_text(size=14))
+#
+#ggplot(df %>%
+#    filter(gf %in% c("4F200", "4F")) %>%
+#    group_by(Component) %>%
+#    mutate(
+#      Normalized_Pct = (Pct - min(Pct)) / (max(Pct) - min(Pct))
+#    )) +
+#  geom_point(aes(chir, gf, colour = Normalized_Pct, size = Normalized_Pct)) +
+#  geom_tile(aes(chir, gf, fill = Normalized_Pct), colour = "white") +
+#  facet_wrap(facets = vars(Component), ncol = 12) +
+#  scale_fill_viridis() +
+#  scale_colour_viridis() + # Use a separate scale for the point colors
+#  theme_linedraw() +
+#  df.theme +
+#  theme(axis.text = element_text(size = 14))
+
+```
+
+
+```{r, fig.height=3, fig.width=12}
+
+(ggplot(df %>%
+    filter(gf %in% c("4F200", "4F")) %>%
+    group_by(Component) %>%
+    mutate(
+      Normalized_Pct = (Pct - min(Pct)) / (max(Pct) - min(Pct))
+    )) +
+  geom_point(aes(chir, gf, size = Normalized_Pct, colour = Pct)) +
+ 
+  facet_wrap(facets = vars(Component), ncol = 9) +
+  
+  scale_colour_viridis(option = "B",end = 0.75) +
+  theme_linedraw() +
+  df.theme  + theme(axis.text = element_text(size=14))) -> plot1
+
+plot1
+```
+
+```{r, fig.height=2.5, fig.width=12}
+
+(ggplot(df2 %>%
+    filter(gf %in% c("4F200", "4F")) %>%
+    group_by(Component) %>%
+    mutate(
+      Normalized_Pct = (Pct - min(Pct)) / (max(Pct) - min(Pct))
+    )) +
+  geom_point(aes(chir, gf, size = Normalized_Pct, colour = Pct)) +
+ 
+  facet_wrap(facets = vars(Component), ncol = 12) +
+  
+  scale_colour_viridis(option = "B",end = 0.75) +
+  theme_linedraw() +
+  df.theme  + theme(axis.text = element_text(size=14),
+                    legend.position = "right")) -> plot2
+
+plot2
+
+```
+
+```{r, fig.height=2.5, fig.width=8}
+
+(ggplot(df3 %>%
+    filter(gf %in% c("4F200", "4F")) %>%
+    group_by(Component) %>%
+    mutate(
+      Normalized_Pct = (Pct - min(Pct)) / (max(Pct) - min(Pct))
+    )) +
+  geom_point(aes(chir, gf, size = Normalized_Pct, colour = Pct),) +
+ 
+  facet_wrap(facets = vars(Component), ncol = 12) +
+  
+  scale_colour_viridis(option = "B",end = 0.75) +
+  theme_linedraw() +
+  df.theme  + theme(axis.text = element_text(size=14),
+                    legend.position = "right")) -> plot3
+plot3
+```
+
+
+```{r, fig.height=6, fig.width=16}
+plot3 + plot2 + plot1 + plot_layout(design = "
+                                      a
+                                      b
+                                      c
+                                      c
+                                      c
+                                      c
+                                    ")
+```
+
+
+
+```{r}
+dflist <- list() 
+dflist[["F200"]] <- read_csv("moscot/origins/origins_5c4F200D7_5c4F200D14.csv")
+dflist[["F"]] <- read_csv("moscot/origins/origins_5c4FD7_5c4FD14.csv")
+dflist[["FC"]] <- read_csv("moscot/origins/origins_5c4FCD7_5c4FCD14.csv")
+dflist[["FA"]] <- read_csv("moscot/origins/origins_5c4FAD7_5c4FAD14.csv")
+dflist[["FL"]] <- read_csv("moscot/origins/origins_5c4FLD7_5c4FLD14.csv")
+dflist[["E"]] <- read_csv("moscot/origins/origins_5c4ED7_5c4ED14.csv")
+dflist[["FG"]] <- read_csv("moscot/origins/origins_5c4FD7_5c4FGD14.csv")
+
+
+dflist <- map2(dflist, names(dflist), ~.x %>% 
+                 pivot_longer(cols = 2:ncol(.x), 
+                              names_to = "Descendants", 
+                              values_to = "p") %>% 
+                 mutate(Comparison = .y)
+)
+
+dfbound <- bind_rows(dflist)
+names(dfbound) <- c("Origin", "Descendants", "p", "Comparison")
+```
+
+
+```{r, fig.width=14, fig.height=4}
+#dfbound$Origin <- str_split(dfbound$Origin_Descendants, pattern = "_", simplify = T)[,1] %>% as.factor()
+dfbound$Comparison <- factor(dfbound$Comparison, levels = c("F", "F200", "E", "FG", "FA", "FC", "FL"))
+
+(map(unique(dfbound$Descendants), 
+~ggplot(dfbound %>% filter(Descendants==.x)) +
+  geom_tile(aes(y = Origin, x = Comparison, fill = p), colour = "white") +
+  geom_text(aes(y = Origin, x = Comparison, label = round(p*100, 0)), colour = "black", size = 3) +
+  #geom_label(aes(Identity, Component, label = Pct)) +
+  viridis::scale_fill_viridis() + 
+  #scale_colour_gradient2(low = "white", mid = "white", high = "black", midpoint = 40) +
+  theme(axis.text.x = element_text(angle=45, vjust = 1, hjust = 1),
+        plot.title = element_text(hjust=0.5),
+        axis.title = element_blank()) + NoLegend() +
+  ggtitle(paste0(.x))
+) %>% wrap_plots(ncol=6)) -> plot
+plot
+ggsave(
+    plot = plot,
+  filename = "png/moscot_S2toS3_heatmaps.png",
+  width = 4, # Width in inches
+  height = 14,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+
+```
+
+# Figure 6
+
+```{r, fig.width= 6, fig.height=4}
+StrDotPlot(s2[, s2$condition %in% c("3c4FL", "4c4FL", "5c4FL", "3c4F", "5c4F", "4c4F")], group.by = "condition",
+           features = c("PAX8", "ITGA8", "PDGFRA", "PDGFRB", "TCF15", "FOXD1", "MEOX1", "PAX3", "NTN1", "ROBO2", "EPCAM")) -> plot
+plot
+```
+
+```{r, fig.width= 6, fig.height=4}
+StrDotPlot(s3[, s3$condition %in% c("3c4FL", "4c4FL", "5c4FL", "3c4F", "5c4F", "4c4F")], group.by = "condition",
+           features = c("PAX8", "ITGA8", "PDGFRA", "PDGFRB", "TCF15", "FOXD1", "MEOX1", "PAX3", "NTN1", "ROBO2", "EPCAM")) -> plot
+plot
+```
+
+```{r, fig.width= 6, fig.height=7}
+(StrDotPlot(s2, group.by = "condition",
+           features = c("FGF8", "SP5", "TBX6", "PAX8", "ITGA8", "FOXC2", "TCF15", "MEOX1", "PAX3", "HOXD9", "HOXD10", "HOXD11")) ) -> plot
+
+plot
+ggsave(
+    plot = plot,
+  filename = "png/Stage2_DotPlot_KeyMarkers.png",
+  width = 6, # Width in inches
+  height = 7,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+## Figure 6
+
+```{r}
+embed.list <- read_rds(here::here("analysis/Submission2/data/GoutiLittleIntegrations.rds"))
+
+embed.list$d50ab_s4$Study <- ifelse(is.na(embed.list$d50ab_s4$CellTypes)==TRUE, "Faustino-Martins", "Wilson")
+embed.list$d50ab_s4$Dataset <- ifelse(is.na(embed.list$d50ab_s4$condition)==TRUE, "Faustino-Martins", paste0("Wilson_", embed.list$d50ab_s4$gf))
+embed.list$d50ab_s4$Dataset <- factor(embed.list$d50ab_s4$Dataset, levels = c("Wilson_4F", "Wilson_4F200", "Wilson_4FL", "Faustino-Martins"))
+
+embed.list$d50ab_s4$DatasetCond <- ifelse(is.na(embed.list$d50ab_s4$condition)==TRUE, "Faustino-Martins", embed.list$d50ab_s4$condition)
+embed.list$d50ab_s4$DatasetCond <- factor(embed.list$d50ab_s4$DatasetCond, levels = c("3c4F", "4c4F", "5c4F", 
+                                                                                      "3c4F200", "4c4F200", "5c4F200",
+                                                                                      "3c4FL", "5c4FL", "Faustino-Martins"))
+
+embed.list$d50ab_s4$DatasetCondRev <- factor(embed.list$d50ab_s4$DatasetCond, levels = rev(c("3c4F", "4c4F", "5c4F", 
+                                                                                      "3c4F200", "4c4F200", "5c4F200",
+                                                                                      "3c4FL", "5c4FL", "Faustino-Martins")))
+
+## colour shiftings
+
+pop.types <- list(nephron = c("NPC-2", "EN", "PEC", "EPod", "Pod", "EPT", "PT", "EDT", "LOH", "DT", "UOS", "UTip", "UIS"),
+                  stroma = c("SPC", "MS", "CS", "MesS", "Endo"),
+                  neural = c("Glia-Ependymal", "Glia-Schwann", "Glia-1",  "Glia-2",  "Glia-3", "Neuron"),
+                  muscle = c("Myocyte","Satellite-cells"),
+                  other = c("NPC-like"))
+newmd <- embed.list$d50ab_s4@meta.data %>% 
+  mutate(Lineage = case_when(CombinedCellTypes %in% pop.types$nephron ~ "Nephron",
+                             CombinedCellTypes %in% pop.types$stroma ~ "Stroma",
+                             CombinedCellTypes %in% pop.types$neural ~ "Neural",
+                             CombinedCellTypes %in% pop.types$muscle ~ "Muscular",
+                             CombinedCellTypes %in% pop.types$other ~ "Other")) %>% 
+  mutate(Lineage = fct_relevel(Lineage, "Nephron", "Stroma", "Neural", "Muscular", "Other"))
+
+embed.list$d50ab_s4$CCT_Lineages <- newmd$Lineage
+
+##
+
+
+```
+
+```{r fig.width=7, fig.height=6}
+(DimPlot(embed.list$d50ab_s4, 
+        reduction = "umap", split.by = "Dataset", group.by = "CCT_Lineages", ncol = 2) +
+  ggtitle("Integrated Clusters") + theme(legend.position = "bottom",
+                                         legend.text = element_text(size=15, hjust=0.5),
+                                         plot.title = element_blank()) & NoAxes()) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/WilsonMartinsIntegration_UMAP_lineages.png",
+  width = 7, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r fig.width=7, fig.height=6}
+(DimPlot(embed.list$d50ab_s4, 
+        reduction = "umap", split.by = "DatasetCond", group.by = "CCT_Lineages", ncol = 3) +
+  ggtitle("Integrated Clusters") + theme(legend.position = "bottom",
+                                         legend.text = element_text(size=15, hjust=0.5),
+                                         plot.title = element_blank()) & NoAxes()) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/WilsonMartinsIntegration_UMAP_lineagesCond.png",
+  width = 7, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+
+
+```{r, fig.width=6, fig.height=6}
+ComponentBar(embed.list$d50ab_s4@meta.data, "DatasetCondRev", "CCT_Lineages", show.pct = T, show.text = 101) +
+  coord_flip() +
+  theme(axis.text = element_text(size=15),
+        legend.position = "right",
+        plot.title = element_blank()) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/WilsonMartinsIntegration_Barchart_lineagesCond.png",
+  width = 6, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+```{r, fig.height=6, fig.width=16}
+(FeaturePlot(embed.list$d50ab_s4, features = c(
+                                          "PAX7", "TTN", "STMN2", "MEOX1", "SMOC2", "GFAP",
+                                          "SOX10"), order=T, cols = vcol,
+              split.by = "Study", by.col = F) & NoAxes() & NoLegend()) -> plot
+
+plot
+ggsave(
+  plot = plot,
+  filename = "png/WilsonMartinsIntegration_WholeMarkers.png",
+  width = 16, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+```{r, fig.width=14, fig.height=6}
+(FeaturePlot(embed.list$epsub.d50abs4, features = c("PAX8", "EPCAM", "GATA3", "HNF4A", "SLC12A1","NPHS1"), order=T, cols = vcol,
+            split.by = "Study", by.col=F) & NoAxes() & NoLegend()) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/WilsonMartinsIntegration_NephronMarkers.png",
+  width = 12, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+```{r, fig.width=7, fig.height=6}
+(DimPlot(embed.list$epsub.d50abs4, group.by = "CombinedCellTypes", ncol=2, 
+            split.by = "Study") & theme(legend.position = "bottom") & NoAxes()) -> plot
+plot
+ggsave(
+  plot = plot,
+  filename = "png/WilsonMartinsIntegration_CellTypes.png",
+  width = 7, # Width in inches
+  height = 6,  # Height in inches
+  dpi = 300   # Resolution in dots per inch
+)
+```
+
+
+```{r}
+expmat <- DFDotPlot(s2, features = c("PAX8", "ITGA8", "FOXC2", "SALL1", "WT1", "PDGFRA", "PAX3", "SOX2")
+                      , group.by = "condition") %>% 
+  select(c("pct.exp", "id", "features.plot")) %>% 
+  pivot_wider(names_from = "id", values_from = "pct.exp") %>% 
+  column_to_rownames("features.plot")
+
+
+hm.legend <- data.frame(Grade = c("Good", "Good", "Good", "Bad", "Good", "Fail", "Good", "Bad",
+                                  "Good", "Good", "Good", "Good", "Bad", "Fail", "Good", "Good",
+                                  "Good", "Good", "Bad", "Fail"))
+```
+
+
+
+```{r, fig.width=9, fig.height=4}
+NMF::aheatmap(expmat, border_color = "black", treeheight = c(50, 25), txt = round(expmat, 0), scale = 'row', 
+              annCol = hm.legend, annColors = list(c("red", "orange", "green")))
+```
+
+```{r}
+expmat <- DFDotPlot(s3, features = c("PAX8", "PAX2", "PDGFRA", "PAX3", "SOX2", "ZIC2", "TCF15", "MEOX2")
+                      , group.by = "condition") %>% 
+  select(c("pct.exp", "id", "features.plot")) %>% 
+  pivot_wider(names_from = "id", values_from = "pct.exp") %>% 
+  column_to_rownames("features.plot")
+
+
+hm.legend <- data.frame(Grade = c("Bad", "Good", "Bad", "Bad", "Good", "Good", "Good", "Good",
+                                  "Good", "Good", "Bad", "Good", "Good", "Good", "Bad", "Good",
+                                  "Good", "Good", "Fail", "Fail", "Fail"))
+```
+
+
+
+```{r, fig.width=9, fig.height=4}
+NMF::aheatmap(expmat, border_color = "black", treeheight = c(50, 25), txt = round(expmat, 0), scale = 'row', 
+              annCol = hm.legend, annColors = list(c("red", "orange", "green")))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
